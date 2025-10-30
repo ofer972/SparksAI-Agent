@@ -79,17 +79,18 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
         return False, "AI chat failed or returned empty response"
 
     # Upsert Team AI Card
+    today = datetime.now(timezone.utc).date().isoformat()
     card_payload = {
         "team_name": team_name,
         "card_name": "Sprint Goal Analysis",
         "card_type": "Sprint Goal",
         "description": llm_answer[:2000],
+        "date": today,
         "priority": "High",
         "source": "Sprint Goal",
         "source_job_id": job_id,
         "full_information": formatted,
     }
-    today = datetime.now(timezone.utc).date().isoformat()
     sc, cards = client.list_team_ai_cards()
     upsert_done = False
     if sc == 200 and isinstance(cards, dict):

@@ -87,18 +87,19 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
         return False, "AI chat failed or returned empty response"
 
     # Create/Upsert PI AI Card (client-side)
+    today = datetime.now(timezone.utc).date().isoformat()
     card_payload = {
         "pi": pi,
         "team_name": job.get("team_name"),
         "card_name": "PI Sync Review",
         "card_type": "PI Sync",
         "description": llm_answer[:2000],
+        "date": today,
         "priority": "Critical",
         "source": "PI",
         "source_job_id": job_id,
         "full_information": formatted,
     }
-    today = datetime.now(timezone.utc).date().isoformat()
     # Try find existing card for (date=today, team_name, pi, card_name)
     sc, cards = client.list_pi_ai_cards()
     upsert_done = False

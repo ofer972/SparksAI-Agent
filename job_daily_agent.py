@@ -89,17 +89,18 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
         return False, "AI chat failed or returned empty response"
 
     # Create/Upsert Team AI Card
+    today = datetime.now(timezone.utc).date().isoformat()
     card_payload = {
         "team_name": team_name,
         "card_name": "Daily Progress Review",
         "card_type": "Daily Progress",
         "description": llm_answer[:2000],
+        "date": today,
         "priority": "Critical",
         "source": "Daily Agent",
         "source_job_id": job_id,
         "full_information": formatted,
     }
-    today = datetime.now(timezone.utc).date().isoformat()
 
     # Ensure api_client has list/patch team-ai-cards
     sc, cards = client.list_team_ai_cards()
