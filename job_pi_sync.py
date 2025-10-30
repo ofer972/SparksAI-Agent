@@ -135,6 +135,7 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
         rec_payload = {
             "team_name": pi,
             "action_text": rec_text,
+            "date": today,
             "priority": "High",
             "status": "Proposed",
             "full_information": llm_answer[:2000],
