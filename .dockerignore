@@ -1,0 +1,28 @@
+# Git
+.git
+
+# Python caches
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+*.py[cod]
+*$py.class
+
+# Virtual envs
+.venv
+venv
+ENV
+env
+
+# OS/Editor
+.DS_Store
+.idea
+.vscode
+*.swp
+*.swo
+*~
+
+# Local env files
+.env
+.env.local
