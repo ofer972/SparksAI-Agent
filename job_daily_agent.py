@@ -111,20 +111,22 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
                 try:
                     same_date = str(c.get("date", ""))[:10] == today
                     if same_date and c.get("team_name") == card_payload["team_name"] and c.get("card_name") == card_payload["card_name"]:
-                        client.patch_team_ai_card(int(c.get("id")), card_payload)
-                        upsert_done = True
+                        psc, presp = client.patch_team_ai_card(int(c.get("id")), card_payload)
+                        if psc >= 300:
+                            print(f"⚠️ Patch team-ai-card failed: {psc} {presp}")
+                        upsert_done = psc < 300
                         break
                 except Exception:
                     continue
     if not upsert_done:
-        client.create_team_ai_card(card_payload)
+        csc, cresp = client.create_team_ai_card(card_payload)
+        if csc >= 300:
+            print(f"⚠️ Create team-ai-card failed: {csc} {cresp}")
 
     # Log insight
     print(
         f"🗂️ Card insight: name='{card_payload['card_name']}' type='{card_payload['card_type']}' priority='{card_payload['priority']}' preview='{card_payload['description'][:120]}'"
     )
-
-    # For now, no JSON recommendation parsing for Daily. If added later, we will POST and print like PI.
 
     result = (
         f"Daily processed for {team_name}. Transcript={'yes' if transcript_obj else 'no'}, "

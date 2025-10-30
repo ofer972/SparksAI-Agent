@@ -99,13 +99,17 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
                 try:
                     same_date = str(c.get("date", ""))[:10] == today
                     if same_date and c.get("team_name") == card_payload["team_name"] and c.get("card_name") == card_payload["card_name"]:
-                        client.patch_team_ai_card(int(c.get("id")), card_payload)
-                        upsert_done = True
+                        psc, presp = client.patch_team_ai_card(int(c.get("id")), card_payload)
+                        if psc >= 300:
+                            print(f"⚠️ Patch team-ai-card failed: {psc} {presp}")
+                        upsert_done = psc < 300
                         break
                 except Exception:
                     continue
     if not upsert_done:
-        client.create_team_ai_card(card_payload)
+        csc, cresp = client.create_team_ai_card(card_payload)
+        if csc >= 300:
+            print(f"⚠️ Create team-ai-card failed: {csc} {cresp}")
 
     print(
         f"🗂️ Card insight: name='{card_payload['card_name']}' type='{card_payload['card_type']}' priority='{card_payload['priority']}' preview='{card_payload['description'][:120]}'"
@@ -121,8 +125,11 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
             "status": "Proposed",
             "full_information": llm_answer[:2000],
         }
-        client.create_recommendation(rec_payload)
-        print(f"🧩 Recommendation: priority='High' status='Proposed' text='{rec_text[:120]}'")
+        rsc, rresp = client.create_recommendation(rec_payload)
+        if rsc >= 300:
+            print(f"⚠️ Create recommendation failed: {rsc} {rresp}")
+        else:
+            print(f"🧩 Recommendation: priority='High' status='Proposed' text='{rec_text[:120]}'")
 
     return True, "Sprint Goal processed"
 

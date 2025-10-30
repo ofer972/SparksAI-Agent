@@ -110,13 +110,17 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
                     same_date = str(c.get("date", ""))[:10] == today
                     if same_date and c.get("team_name") == card_payload["team_name"] and c.get("pi") == card_payload["pi"] and c.get("card_name") == card_payload["card_name"]:
                         # Patch existing
-                        client.patch_pi_ai_card(int(c.get("id")), card_payload)
-                        upsert_done = True
+                        psc, presp = client.patch_pi_ai_card(int(c.get("id")), card_payload)
+                        if psc >= 300:
+                            print(f"⚠️ Patch pi-ai-card failed: {psc} {presp}")
+                        upsert_done = psc < 300
                         break
                 except Exception:
                     continue
     if not upsert_done:
-        client.create_pi_ai_card(card_payload)
+        csc, cresp = client.create_pi_ai_card(card_payload)
+        if csc >= 300:
+            print(f"⚠️ Create pi-ai-card failed: {csc} {cresp}")
     # Short log of the created card insight
     desc_preview = (card_payload["description"] or "")[:120]
     print(
@@ -127,14 +131,17 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     recs = extract_recommendations(llm_answer, max_count=2)
     for rec_text in recs:
         rec_payload = {
-            "team_name": pi,
+            "team_name": job.get("team_name"),
             "action_text": rec_text,
             "priority": "High",
             "status": "Proposed",
             "full_information": llm_answer[:2000],
         }
-        client.create_recommendation(rec_payload)
-        print(f"🧩 Recommendation: priority='High' status='Proposed' text='{rec_text[:120]}'")
+        rsc, rresp = client.create_recommendation(rec_payload)
+        if rsc >= 300:
+            print(f"⚠️ Create recommendation failed: {rsc} {rresp}")
+        else:
+            print(f"🧩 Recommendation: priority='High' status='Proposed' text='{rec_text[:120]}'")
 
     result = (
         f"PI Sync processed for {pi}. Transcript={'yes' if transcript_obj else 'no'}, "
