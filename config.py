@@ -1,11 +1,7 @@
 import os
-from datetime import timedelta
 
 # Base backend URL (no auth for now)
-BASE_URL: str = os.getenv("SPARKS_BASE_URL", "http://localhost:8000")
-
-# Agent identification
-AGENT_ID: str = os.getenv("AGENT_ID", "Daily1")
+BASE_URL: str = os.getenv("INTERNAL_BACKEND_URL", "http://localhost:8000")
 
 # Job processing configuration (mirror existing logic)
 JOB_TYPES = [

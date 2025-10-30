@@ -36,7 +36,6 @@ def _extract_job_id(job: Dict[str, Any]) -> int | None:
 def run_agent() -> None:
     print("=" * 70)
     print("🚀 Starting SparksAI-Agent")
-    print(f"   Agent ID: {config.AGENT_ID}")
     print(f"   Backend: {config.BASE_URL}")
     print(f"   Job Types: {', '.join(config.JOB_TYPES)}")
     print(f"   Polling Interval: {config.POLLING_INTERVAL_SECONDS} seconds")
@@ -93,7 +92,7 @@ def run_agent() -> None:
 
             claim_body = {
                 "status": "claimed",
-                "claimed_by": config.AGENT_ID,
+                "claimed_by": str(job.get("job_type", "Unknown")),
                 "claimed_at": _now_iso(),
             }
             sc, resp = client.patch_agent_job(job_id, claim_body)
