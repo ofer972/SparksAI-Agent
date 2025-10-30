@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 import config
 from api_client import APIClient
 from llm_client import call_llm_generic
-from utils_processing import format_table
+from utils_processing import format_table, extract_recommendations
 
 
 def _format_daily_input(transcript: Dict[str, Any] | None, burndown_records: Any, prompt: str | None, team_name: str) -> str:
@@ -128,6 +128,23 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     print(
         f"🗂️ Card insight: name='{card_payload['card_name']}' type='{card_payload['card_type']}' priority='{card_payload['priority']}' preview='{card_payload['description'][:120]}'"
     )
+
+    # Extract and create up to 2 recommendations from LLM text
+    recs = extract_recommendations(llm_answer, max_count=2)
+    for rec_text in recs:
+        rec_payload = {
+            "team_name": team_name,
+            "action_text": rec_text,
+            "date": today,
+            "priority": "High",
+            "status": "Proposed",
+            "full_information": llm_answer[:2000],
+        }
+        rsc, rresp = client.create_recommendation(rec_payload)
+        if rsc >= 300:
+            print(f"⚠️ Create recommendation failed: {rsc} {rresp}")
+        else:
+            print(f"🧩 Recommendation: priority='High' status='Proposed' text='{rec_text[:120]}'")
 
     result = (
         f"Daily processed for {team_name}. Transcript={'yes' if transcript_obj else 'no'}, "
