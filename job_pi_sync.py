@@ -131,8 +131,9 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     # Extract and create up to 2 recommendations from LLM text
     recs = extract_recommendations(llm_answer, max_count=2)
     for rec_text in recs:
+        # For recommendations, team_name should actually be the quarter (PI)
         rec_payload = {
-            "team_name": job.get("team_name"),
+            "team_name": pi,
             "action_text": rec_text,
             "priority": "High",
             "status": "Proposed",
