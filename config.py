@@ -1,7 +1,7 @@
 import os
 
 # Base backend URL (no auth for now)
-BASE_URL: str = os.getenv("INTERNAL_BACKEND_URL", "http://localhost:8000")
+BASE_URL: str = os.getenv("BACKEND_API_URL", "http://localhost:8000")
 
 # Job processing configuration (mirror existing logic)
 JOB_TYPES = [
