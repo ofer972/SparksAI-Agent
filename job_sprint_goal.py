@@ -118,15 +118,9 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
 
     # Recommendations from LLM text (cap 2)
     recs = extract_recommendations(llm_answer, max_count=2)
-    # Determine quarter/PI for recommendations
-    quarter = None
-    if isinstance(active, dict):
-        quarter = active.get("pi") or active.get("quarter")
-    if not quarter:
-        quarter = job.get("pi")
     for rec_text in recs:
         rec_payload = {
-            "team_name": quarter or "Unknown",
+            "team_name": team_name,
             "action_text": rec_text,
             "priority": "High",
             "status": "Proposed",
