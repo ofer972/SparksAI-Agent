@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 import config
 from api_client import APIClient
 from llm_client import call_llm_generic
-from utils_processing import format_table, extract_recommendations
+from utils_processing import format_burndown_markdown, extract_recommendations
 
 
 def process(job: Dict[str, Any]) -> Tuple[bool, str]:
@@ -55,13 +55,11 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     parts.append("")
     parts.append("SPRINT BURNDOWN:")
     parts.append("-" * 20)
-    table = ""
     try:
-        if isinstance(burndown_records, list) and burndown_records:
-            table = format_table(burndown_records)
+        burndown_formatted = format_burndown_markdown(burndown_records)
+        parts.append(burndown_formatted)
     except Exception:
-        table = ""
-    parts.append(table or "No burndown data")
+        parts.append("No burndown data")
     parts.append("")
     if prompt_text:
         parts.append("ANALYSIS PROMPT:")

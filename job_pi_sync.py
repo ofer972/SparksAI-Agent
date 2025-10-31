@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 import config
 from api_client import APIClient
 from llm_client import call_llm_generic
-from utils_processing import format_table, extract_recommendations
+from utils_processing import format_burndown_markdown, extract_recommendations
 
 
 def _extract_pi(job: Dict[str, Any]) -> str | None:
@@ -38,11 +38,7 @@ def _format_input(transcript: Dict[str, Any] | None, burndown: Dict[str, Any] | 
     parts.append("")
 
     parts.append("-- PI Burndown Snapshot --")
-    if burndown and isinstance(burndown, dict):
-        for k, v in burndown.items():
-            parts.append(f"{k}: {v}")
-    else:
-        parts.append("No burndown data found")
+    parts.append(format_burndown_markdown(burndown))
     parts.append("")
 
     if prompt:

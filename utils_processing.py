@@ -79,3 +79,90 @@ def extract_recommendations(llm_text: str, max_count: int = 2) -> List[str]:
     return cleaned
 
 
+def format_burndown_markdown(burndown: Dict[str, Any] | List[Dict[str, Any]] | None) -> str:
+    """Format burndown data as structured markdown for LLM and UI display.
+    
+    Handles both:
+    - Dict format (e.g., PI burndown with nested burndown_data list)
+    - List format (e.g., sprint burndown records)
+    """
+    # Handle direct list input (sprint burndown)
+    if isinstance(burndown, list):
+        if not burndown:
+            return "No burndown data found"
+        table = format_table(burndown)
+        return table if table else "No burndown data found"
+    
+    # Handle dict input (PI burndown)
+    if not burndown or not isinstance(burndown, dict):
+        return "No burndown data found"
+    
+    lines = []
+    # Group related fields for better readability
+    numeric_fields = []
+    date_fields = []
+    list_fields = []
+    other_fields = []
+    
+    for k, v in burndown.items():
+        k_lower = str(k).lower()
+        
+        # Check if it's a list (especially burndown_data)
+        if isinstance(v, list):
+            list_fields.append((k, v))
+        elif any(x in k_lower for x in ['date', 'time', 'day']):
+            date_fields.append((k, v))
+        elif isinstance(v, (int, float)) or (isinstance(v, str) and v.replace('.', '').replace('-', '').isdigit()):
+            numeric_fields.append((k, v))
+        else:
+            other_fields.append((k, v))
+    
+    # Handle lists - especially burndown_data or any list of dicts
+    if list_fields:
+        for k, v_list in list_fields:
+            if isinstance(v_list, list) and len(v_list) > 0 and isinstance(v_list[0], dict):
+                # Format as table using existing utility
+                lines.append(f"**{k}:**")
+                table = format_table(v_list)
+                if table:
+                    lines.append(table)
+                else:
+                    # Fallback: show count and sample
+                    lines.append(f"- Total records: {len(v_list)}")
+                    if len(v_list) > 0:
+                        lines.append(f"- Sample record fields: {', '.join(list(v_list[0].keys())[:5])}...")
+                lines.append("")
+            else:
+                # Other lists - show count and truncated preview
+                lines.append(f"**{k}:**")
+                lines.append(f"- Count: {len(v_list)}")
+                preview = str(v_list)[:200]
+                if len(str(v_list)) > 200:
+                    preview += "..."
+                lines.append(f"- Preview: `{preview}`")
+                lines.append("")
+    
+    if date_fields:
+        lines.append("**Dates & Timeline:**")
+        for k, v in date_fields:
+            lines.append(f"- {k}: `{v}`")
+        lines.append("")
+    
+    if numeric_fields:
+        lines.append("**Metrics & Numbers:**")
+        for k, v in numeric_fields:
+            lines.append(f"- {k}: `{v}`")
+        lines.append("")
+    
+    if other_fields:
+        lines.append("**Other Information:**")
+        for k, v in other_fields:
+            # Truncate very long values
+            v_str = str(v)
+            if len(v_str) > 200:
+                v_str = v_str[:200] + "..."
+            lines.append(f"- {k}: {v_str}")
+    
+    return "\n".join(lines) if lines else "No burndown data found"
+
+
