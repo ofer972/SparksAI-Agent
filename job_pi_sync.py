@@ -171,7 +171,8 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
         team_name_or_pi=pi,  # Use PI name as team_name for recommendations
         today=today,
         full_info_truncated=full_info_truncated,
-        max_count=2
+        max_count=2,
+        job_id=int(job_id) if job_id is not None else None
     )
     
     # Fallback to text-based extraction if no JSON recommendations found
@@ -187,6 +188,7 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
                 "priority": "High",
                 "status": "Proposed",
                 "full_information": full_info_truncated,
+                "source_job_id": int(job_id) if job_id is not None else None,
             }
             rsc, rresp = client.create_recommendation(rec_payload)
             if rsc >= 300:

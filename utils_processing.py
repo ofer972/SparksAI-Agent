@@ -88,7 +88,8 @@ def save_recommendations_from_json(
     team_name_or_pi: str,
     today: str,
     full_info_truncated: str,
-    max_count: int = 2
+    max_count: int = 2,
+    job_id: int | None = None
 ) -> int:
     """
     Parse and save recommendations from JSON string to database.
@@ -100,6 +101,7 @@ def save_recommendations_from_json(
         today: Date string in ISO format
         full_info_truncated: Truncated full information text
         max_count: Maximum number of recommendations to save (default: 2)
+        job_id: Optional job ID that triggered this recommendation
     
     Returns:
         Number of recommendations successfully saved (0 if none)
@@ -125,6 +127,7 @@ def save_recommendations_from_json(
                         "status": "Proposed",
                         "full_information": full_info_truncated,
                         "information_json": json.dumps(recommendation_obj),  # Store individual recommendation JSON
+                        "source_job_id": job_id,
                     }
                     rsc, rresp = client.create_recommendation(rec_payload)
                     if rsc >= 300:
