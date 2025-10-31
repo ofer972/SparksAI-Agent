@@ -184,12 +184,59 @@ class APIClient:
         )
         return resp.status_code, self._safe_json(resp)
 
+    def check_health(self) -> Tuple[int, Any]:
+        """Check backend health by calling /health endpoint."""
+        resp = requests.get(
+            self._url("/health"),
+            headers=self._headers(),
+            timeout=self.timeout_seconds,
+        )
+        return resp.status_code, self._safe_json(resp)
+
     @staticmethod
     def _safe_json(resp: requests.Response) -> Any:
         try:
             return resp.json()
         except Exception:
             return resp.text
+
+
+def wait_for_backend(
+    api_call_fn,
+    operation_name: str = "backend operation",
+    initial_delay: float = 2.0,
+    max_delay: float | None = None,
+) -> Any:
+    """
+    Generic function to wait/retry backend API calls with exponential backoff.
+    
+    Args:
+        api_call_fn: Callable that performs the API call (can raise RequestException)
+        operation_name: Name of operation for logging (e.g., "health check")
+        initial_delay: Initial delay in seconds (default: 2.0)
+        max_delay: Maximum delay cap in seconds (default: uses config.NETWORK_BACKOFF_CAP_SECONDS)
+    
+    Returns:
+        Result of api_call_fn() when successful
+    
+    Raises:
+        The exception from api_call_fn if all retries are exhausted
+    """
+    if max_delay is None:
+        max_delay = config.NETWORK_BACKOFF_CAP_SECONDS
+    
+    backoff_delay = initial_delay
+    
+    while True:
+        try:
+            result = api_call_fn()
+            return result
+        except requests.exceptions.RequestException as e:
+            print(
+                f"🌐 Backend unreachable for {operation_name}, retrying in {backoff_delay}s (error: {e.__class__.__name__})"
+            )
+            time.sleep(backoff_delay)
+            backoff_delay = min(backoff_delay * 2, max_delay)
 
 
 def retry_call(fn, max_retries: int = 3, base_delay: float = 1.0):

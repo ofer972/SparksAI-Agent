@@ -6,7 +6,7 @@ from typing import Any, Dict, List
 import requests
 
 import config
-from api_client import APIClient
+from api_client import APIClient, wait_for_backend
 from job_router import route_and_process
 
 
@@ -42,25 +42,25 @@ def run_agent() -> None:
     print("=" * 70)
 
     client = APIClient()
+    
+    # Check backend health at startup
+    status_code, _ = wait_for_backend(
+        lambda: client.check_health(),
+        operation_name="health check",
+    )
+    if status_code == 200:
+        print("✅ Backend health OK")
+    
     cycle_count = 0
     no_jobs_count = 0  # Counter for consecutive "no jobs" messages
 
-    backoff_delay = 2  # seconds
     while True:
         cycle_count += 1
         try:
-            try:
-                status_code, data = client.get_next_pending_job()
-            except requests.exceptions.RequestException as e:
-                print(
-                    f"🌐 Backend unreachable, retrying in {backoff_delay}s (error: {e.__class__.__name__})"
-                )
-                time.sleep(backoff_delay)
-                backoff_delay = min(backoff_delay * 2, config.NETWORK_BACKOFF_CAP_SECONDS)
-                continue
-
-            # Reset backoff after a successful call
-            backoff_delay = 2
+            status_code, data = wait_for_backend(
+                lambda: client.get_next_pending_job(),
+                operation_name="get next pending job",
+            )
             if status_code == 204 or (status_code == 200 and not data):
                 no_jobs_count += 1
                 # Only print every 10th "no jobs" message
