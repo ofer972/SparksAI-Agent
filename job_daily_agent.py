@@ -5,7 +5,13 @@ from datetime import datetime, timezone
 import config
 from api_client import APIClient
 from llm_client import call_llm_generic
-from utils_processing import format_burndown_markdown, format_transcript, extract_recommendations
+from utils_processing import (
+    format_burndown_markdown,
+    format_transcript,
+    extract_recommendations,
+    extract_text_and_json,
+    extract_daily_progress_review,
+)
 
 
 def _format_daily_input(transcript: Dict[str, Any] | None, burndown_records: Any, prompt: str | None, team_name: str) -> str:
@@ -76,19 +82,40 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     if not ok:
         return False, "AI chat failed or returned empty response"
 
+    # Extract structured content from LLM response
+    print("\n" + "="*80)
+    print("📋 EXTRACTING STRUCTURED CONTENT FROM LLM RESPONSE")
+    print("="*80)
+    
+    # Extract and separate text from JSON
+    full_information, dashboard_summary_json, recommendations_json = extract_text_and_json(llm_answer)
+    
+    # Extract Daily Progress Review section
+    daily_progress_content = extract_daily_progress_review(llm_answer)
+    
+    # Use extracted section if available, otherwise fallback to full response (truncated)
+    description = daily_progress_content if daily_progress_content else llm_answer[:2000]
+    
+    # Truncate full_information if needed (for database storage)
+    full_info_truncated = full_information[:2000] if len(full_information) > 2000 else full_information
+
     # Create/Upsert Team AI Card
     today = datetime.now(timezone.utc).date().isoformat()
     card_payload = {
         "team_name": team_name,
         "card_name": "Daily Progress Review",
         "card_type": "Daily Progress",
-        "description": llm_answer[:2000],
+        "description": description[:2000],  # Truncate description if too long
         "date": today,
         "priority": "Critical",
         "source": "Daily Agent",
         "source_job_id": job_id,
-        "full_information": formatted,
+        "full_information": full_info_truncated,  # Text before JSON
     }
+    
+    # Add information_json if we have dashboard summary JSON
+    if dashboard_summary_json:
+        card_payload["information_json"] = dashboard_summary_json
 
     # Ensure api_client has list/patch team-ai-cards
     sc, cards = client.list_team_ai_cards()
@@ -117,22 +144,69 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
         f"🗂️ Card insight: name='{card_payload['card_name']}' type='{card_payload['card_type']}' priority='{card_payload['priority']}' preview='{card_payload['description'][:120]}'"
     )
 
-    # Extract and create up to 2 recommendations from LLM text
-    recs = extract_recommendations(llm_answer, max_count=2)
-    for rec_text in recs:
-        rec_payload = {
-            "team_name": team_name,
-            "action_text": rec_text,
-            "date": today,
-            "priority": "High",
-            "status": "Proposed",
-            "full_information": llm_answer[:2000],
-        }
-        rsc, rresp = client.create_recommendation(rec_payload)
-        if rsc >= 300:
-            print(f"⚠️ Create recommendation failed: {rsc} {rresp}")
-        else:
-            print(f"🧩 Recommendation: priority='High' status='Proposed' text='{rec_text[:120]}'")
+    # Extract and create recommendations
+    print("\n" + "="*80)
+    print("📋 EXTRACTING AND SAVING RECOMMENDATIONS")
+    print("="*80)
+    
+    # First try to extract recommendations from JSON if available
+    recommendations_saved = 0
+    if recommendations_json:
+        try:
+            parsed_recommendations = json.loads(recommendations_json)
+            if isinstance(parsed_recommendations, list) and parsed_recommendations:
+                print(f"📋 Saving {len(parsed_recommendations)} recommendations from JSON to database...")
+                
+                # Save each recommendation using the JSON structure
+                for recommendation_obj in parsed_recommendations:
+                    if isinstance(recommendation_obj, dict) and 'header' in recommendation_obj and 'text' in recommendation_obj:
+                        rec_payload = {
+                            "team_name": team_name,
+                            "action_text": recommendation_obj['text'],
+                            "rational": recommendation_obj['header'],  # Use header as rational
+                            "date": today,
+                            "priority": "High",
+                            "status": "Proposed",
+                            "full_information": full_info_truncated,
+                            "information_json": json.dumps(recommendation_obj),  # Store individual recommendation JSON
+                        }
+                        rsc, rresp = client.create_recommendation(rec_payload)
+                        if rsc >= 300:
+                            print(f"⚠️ Create recommendation failed: {rsc} {rresp}")
+                        else:
+                            recommendations_saved += 1
+                            print(f"🧩 Recommendation: priority='High' status='Proposed' header='{recommendation_obj['header'][:60]}' text='{recommendation_obj['text'][:120]}'")
+                        
+                        # Limit to max recommendations
+                        if recommendations_saved >= 2:
+                            break
+                    else:
+                        print(f"⚠️ Skipping invalid recommendation object: {recommendation_obj}")
+        except json.JSONDecodeError as e:
+            print(f"❌ Failed to parse recommendations JSON: {e}")
+    
+    # Fallback to text-based extraction if no JSON recommendations found
+    if recommendations_saved == 0:
+        print("⚠️ No recommendations from JSON found - falling back to text extraction")
+        recs = extract_recommendations(llm_answer, max_count=2)
+        for rec_text in recs:
+            rec_payload = {
+                "team_name": team_name,
+                "action_text": rec_text,
+                "date": today,
+                "priority": "High",
+                "status": "Proposed",
+                "full_information": full_info_truncated,
+            }
+            rsc, rresp = client.create_recommendation(rec_payload)
+            if rsc >= 300:
+                print(f"⚠️ Create recommendation failed: {rsc} {rresp}")
+            else:
+                recommendations_saved += 1
+                print(f"🧩 Recommendation: priority='High' status='Proposed' text='{rec_text[:120]}'")
+            
+            if recommendations_saved >= 2:
+                break
 
     result = (
         f"Daily processed for {team_name}. Transcript={'yes' if transcript_obj else 'no'}, "
