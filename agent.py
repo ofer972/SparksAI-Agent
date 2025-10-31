@@ -43,6 +43,7 @@ def run_agent() -> None:
 
     client = APIClient()
     cycle_count = 0
+    no_jobs_count = 0  # Counter for consecutive "no jobs" messages
 
     backoff_delay = 2  # seconds
     while True:
@@ -61,9 +62,15 @@ def run_agent() -> None:
             # Reset backoff after a successful call
             backoff_delay = 2
             if status_code == 204 or (status_code == 200 and not data):
-                print(f"⏳ No jobs ({datetime.now(timezone.utc).strftime('%H:%M:%S')})")
+                no_jobs_count += 1
+                # Only print every 10th "no jobs" message
+                if no_jobs_count % 10 == 0:
+                    print(f"⏳ No jobs (checked {no_jobs_count} times, {datetime.now(timezone.utc).strftime('%H:%M:%S')})")
                 time.sleep(config.POLLING_INTERVAL_SECONDS)
                 continue
+            
+            # Reset counter when job is found
+            no_jobs_count = 0
             if status_code != 200:
                 print(f"⚠️ Failed to get next job: {status_code} {data}")
                 time.sleep(config.POLLING_INTERVAL_SECONDS)
