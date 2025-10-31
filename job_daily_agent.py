@@ -93,9 +93,9 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     if not ok:
         return False, "AI chat failed or returned empty response"
 
-    # Print first 400 characters of LLM response
-    preview = llm_answer[:400] if llm_answer else ""
-    print(f"\n📥 LLM Response Preview (first 400 chars):\n{preview}{'...' if len(llm_answer) > 400 else ''}\n")
+    # Print first 500 characters of LLM response
+    preview = llm_answer[:500] if llm_answer else ""
+    print(f"\n📥 LLM Response Preview (first 500 chars):\n{preview}{'...' if len(llm_answer) > 500 else ''}\n")
 
     # Extract structured content from LLM response
     print("📋 EXTRACTING STRUCTURED CONTENT FROM LLM RESPONSE")
