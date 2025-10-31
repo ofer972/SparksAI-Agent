@@ -79,6 +79,41 @@ def extract_recommendations(llm_text: str, max_count: int = 2) -> List[str]:
     return cleaned
 
 
+def format_transcript(transcript: Dict[str, Any] | None, include_label: str = "Transcript:") -> str:
+    """Format transcript data as markdown for LLM and UI display.
+    
+    Args:
+        transcript: Dict containing transcript data (or None)
+        include_label: Label to use for the transcript section
+        
+    Returns:
+        Formatted markdown string with transcript information
+    """
+    if not transcript or not isinstance(transcript, dict):
+        return "No transcript found"
+    
+    parts = []
+    # Add metadata fields if available
+    if transcript.get("transcript_date"):
+        parts.append(f"Date: {transcript.get('transcript_date')}")
+    if transcript.get("type"):
+        parts.append(f"Type: {transcript.get('type')}")
+    if transcript.get("team_name"):
+        parts.append(f"Team/PI: {transcript.get('team_name')}")
+    if transcript.get("file_name"):
+        parts.append(f"File: {transcript.get('file_name')}")
+    
+    # Add the full raw text
+    raw = transcript.get("raw_text")
+    if raw:
+        parts.append(include_label)
+        parts.append(str(raw))
+    else:
+        parts.append("No transcript text found")
+    
+    return "\n".join(parts)
+
+
 def format_burndown_markdown(burndown: Dict[str, Any] | List[Dict[str, Any]] | None) -> str:
     """Format burndown data as structured markdown for LLM and UI display.
     

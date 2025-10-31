@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 import config
 from api_client import APIClient
 from llm_client import call_llm_generic
-from utils_processing import format_burndown_markdown, extract_recommendations
+from utils_processing import format_burndown_markdown, format_transcript, extract_recommendations
 
 
 def _format_daily_input(transcript: Dict[str, Any] | None, burndown_records: Any, prompt: str | None, team_name: str) -> str:
@@ -16,16 +16,7 @@ def _format_daily_input(transcript: Dict[str, Any] | None, burndown_records: Any
 
     # Transcript
     parts.append("=== TRANSCRIPT DATA ===")
-    if transcript:
-        parts.append(f"Date: {transcript.get('transcript_date')}")
-        parts.append(f"Type: {transcript.get('type')}")
-        parts.append(f"File: {transcript.get('file_name')}")
-        raw = transcript.get("raw_text")
-        if raw:
-            parts.append("Raw Transcript Preview:")
-            parts.append(str(raw)[:800])
-    else:
-        parts.append("No transcript found")
+    parts.append(format_transcript(transcript, include_label="Raw Transcript:"))
     parts.append("")
 
     # Burndown

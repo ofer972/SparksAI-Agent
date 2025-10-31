@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 import config
 from api_client import APIClient
 from llm_client import call_llm_generic
-from utils_processing import format_burndown_markdown, extract_recommendations
+from utils_processing import format_burndown_markdown, format_transcript, extract_recommendations
 
 
 def _extract_pi(job: Dict[str, Any]) -> str | None:
@@ -25,16 +25,8 @@ def _extract_pi(job: Dict[str, Any]) -> str | None:
 def _format_input(transcript: Dict[str, Any] | None, burndown: Dict[str, Any] | None, prompt: str | None) -> str:
     parts: list[str] = []
     parts.append("=== PI SYNC DATA ===")
-    if transcript:
-        parts.append("-- Latest Transcript --")
-        parts.append(f"Date: {transcript.get('transcript_date')}")
-        parts.append(f"PI: {transcript.get('team_name')}")
-        raw = transcript.get("raw_text")
-        if raw:
-            parts.append("Transcript Preview:")
-            parts.append(str(raw)[:800])
-    else:
-        parts.append("No transcript found")
+    parts.append("-- Latest Transcript --")
+    parts.append(format_transcript(transcript, include_label="Transcript:"))
     parts.append("")
 
     parts.append("-- PI Burndown Snapshot --")
