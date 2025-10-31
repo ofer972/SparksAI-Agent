@@ -410,16 +410,17 @@ def extract_json_sections(parsed_json: Dict[str, Any] | List[Any]) -> Tuple[str,
         return "", ""
 
 
-def extract_text_and_json(llm_response: str) -> Tuple[str, str, str]:
+def extract_text_and_json(llm_response: str) -> Tuple[str, str, str, str]:
     """
     Extract and separate text from JSON in the LLM response.
     Parses JSON to extract DashboardSummary and Recommendations separately.
     
     Returns:
-        tuple: (text_part, dashboard_summary_json, recommendations_json) where:
+        tuple: (text_part, dashboard_summary_json, recommendations_json, raw_json_string) where:
             text_part: Text content BEFORE JSON starts (for full_information)
             dashboard_summary_json: JSON array of DashboardSummary (for summary cards)
             recommendations_json: JSON array of Recommendations (for recommendations table)
+            raw_json_string: Raw JSON string as extracted (for information_json storage)
     """
     try:
         trimmed = llm_response.strip()
@@ -435,7 +436,7 @@ def extract_text_and_json(llm_response: str) -> Tuple[str, str, str]:
                     parsed_json = json.loads(json_content)  # Validate JSON
                     dashboard_summary, recommendations = extract_json_sections(parsed_json)
                     print(f"✅ JSON found with BEGIN_JSON/END_JSON markers, split at {begin_pos}: text={len(text_before)} chars")
-                    return text_before, dashboard_summary, recommendations
+                    return text_before, dashboard_summary, recommendations, json_content
                 except Exception as e:
                     print(f"⚠️ Failed to parse JSON between BEGIN_JSON/END_JSON: {e}")
         
@@ -453,7 +454,7 @@ def extract_text_and_json(llm_response: str) -> Tuple[str, str, str]:
                         parsed_json = json.loads(json_content)  # Validate JSON
                         dashboard_summary, recommendations = extract_json_sections(parsed_json)
                         print(f"✅ JSON found in markdown, split at {start_pos}: text={len(text_before)} chars")
-                        return text_before, dashboard_summary, recommendations
+                        return text_before, dashboard_summary, recommendations, json_content
                     except:
                         pass
         
@@ -473,18 +474,18 @@ def extract_text_and_json(llm_response: str) -> Tuple[str, str, str]:
                                 parsed_json = json.loads(json_content)  # Validate JSON
                                 dashboard_summary, recommendations = extract_json_sections(parsed_json)
                                 print(f"✅ JSON found, split at {i}: text={len(text_before)} chars")
-                                return text_before, dashboard_summary, recommendations
+                                return text_before, dashboard_summary, recommendations, json_content
                             except:
                                 break
                 break
         
         # No JSON found
         print(f"ℹ️ No JSON found in LLM response")
-        return trimmed, "", ""  # Return everything as text, no JSON
+        return trimmed, "", "", ""  # Return everything as text, no JSON
         
     except Exception as e:
         print(f"❌ Error extracting text and JSON: {e}")
-        return llm_response, "", ""
+        return llm_response, "", "", ""
 
 
 def extract_daily_progress_review(llm_response: str) -> str | None:

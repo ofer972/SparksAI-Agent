@@ -101,7 +101,7 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     print("📋 EXTRACTING STRUCTURED CONTENT FROM LLM RESPONSE")
     
     # Extract and separate text from JSON
-    full_information, dashboard_summary_json, recommendations_json = extract_text_and_json(llm_answer)
+    full_information, dashboard_summary_json, recommendations_json, raw_json_string = extract_text_and_json(llm_answer)
     
     # Extract Daily Progress Review section
     daily_progress_content = extract_daily_progress_review(llm_answer)
@@ -126,9 +126,9 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
         "full_information": full_info_truncated,  # Text before JSON
     }
     
-    # Add information_json if we have dashboard summary JSON
-    if dashboard_summary_json:
-        card_payload["information_json"] = dashboard_summary_json
+    # Add information_json with raw JSON string from BEGIN_JSON/END_JSON
+    if raw_json_string:
+        card_payload["information_json"] = raw_json_string
 
     # Ensure api_client has list/patch team-ai-cards
     sc, cards = client.list_team_ai_cards()
