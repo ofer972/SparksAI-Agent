@@ -65,7 +65,7 @@ def run_agent() -> None:
                 no_jobs_count += 1
                 # Only print every 10th "no jobs" message
                 if no_jobs_count % 10 == 0:
-                    print(f"⏳ No jobs (checked {no_jobs_count} times, {datetime.now(timezone.utc).strftime('%H:%M:%S')})")
+                    print(f"⏳ No jobs (checked 10 times, {datetime.now(timezone.utc).strftime('%H:%M:%S')})")
                 time.sleep(config.POLLING_INTERVAL_SECONDS)
                 continue
             
@@ -124,9 +124,14 @@ def run_agent() -> None:
             }
             sc, resp = client.patch_agent_job(job_id, final_body)
             if sc == 200:
-                print(
-                    f"✅ Job {job_id} {'completed' if success else 'failed'}: {result_text[:120]}"
-                )
+                # Build concise summary with Team and Timestamp
+                first_line = (result_text.split('\n')[0].strip() if result_text else "Unknown")[:100]
+                team = job.get("team_name", "Unknown")
+                timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+                summary = f"{first_line} - Team: {team} - Timestamp: {timestamp}"
+                if len(summary) > 200:
+                    summary = summary[:197] + "..."
+                print(f"✅ Job {job_id} {'completed' if success else 'failed'}: {summary}")
             else:
                 print(f"⚠️ Final update failed for job {job_id}: {sc} {resp}")
 

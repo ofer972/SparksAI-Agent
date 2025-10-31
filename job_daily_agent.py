@@ -231,11 +231,6 @@ Team: {team_name}
 Job ID: {job_id}
 Timestamp: {timestamp}
 
-Data Collected:
-- Transcript: {'Found' if transcript_obj else 'Not found'}
-- Burndown: {'Found' if burndown_obj else 'Not found'}
-- Prompt: {'Found' if prompt_text else 'Not found'}
-
 Data Sent to LLM: {len(formatted)} characters
 LLM Response Length: {len(llm_answer)} characters
 

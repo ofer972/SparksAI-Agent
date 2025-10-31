@@ -24,12 +24,28 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
 
     # Fetch active sprints and validate sprint_goal
     sc, sprints = client.get_sprints(team_name, sprint_status="active")
+    
     active = None
+    sprint_names = []
     if sc == 200 and isinstance(sprints, dict):
-        items = sprints.get("data") or sprints
-        if isinstance(items, list) and items:
-            active = items[0]
+        # API returns: { "success": true, "data": { "sprints": [...], ... } }
+        data = sprints.get("data") or {}
+        sprints_list = data.get("sprints") or []
+        if isinstance(sprints_list, list):
+            for sprint in sprints_list:
+                if isinstance(sprint, dict):
+                    sprint_name = sprint.get("name", "Unknown")  # Field is "name" not "sprint_name"
+                    sprint_names.append(sprint_name)
+            if sprints_list:
+                active = sprints_list[0]
+    
+    # Debug: Print sprint names found
+    if sprint_names:
+        print(f"🔍 Active sprints found: {', '.join(sprint_names)}")
+    else:
+        print(f"🔍 No active sprints found (status={sc})")
 
+    # Check for sprint_goal field (note: this field may not exist in API response)
     sprint_goal = (active or {}).get("sprint_goal") if isinstance(active, dict) else None
     if not sprint_goal or len(str(sprint_goal).strip()) < 10:
         return True, "No sprint Goal found"
@@ -231,12 +247,6 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
 Team: {team_name}
 Job ID: {job_id}
 Timestamp: {timestamp}
-
-Data Collected:
-- Active Sprint: {'Found' if active else 'Not found'}
-- Sprint Goal: {'Found' if sprint_goal else 'Not found'}
-- Burndown: {'Found' if burndown_records else 'Not found'}
-- Prompt: {'Found' if prompt_text else 'Not found'}
 
 Data Sent to LLM: {len(formatted)} characters
 LLM Response Length: {len(llm_answer)} characters
