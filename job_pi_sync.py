@@ -12,6 +12,7 @@ from utils_processing import (
     extract_text_and_json,
     extract_pi_sync_review,
     get_prompt_with_error_check,
+    save_recommendations_from_json,
 )
 
 
@@ -99,9 +100,7 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     print(f"\n📥 LLM Response Preview (first 400 chars):\n{preview}{'...' if len(llm_answer) > 400 else ''}\n")
 
     # Extract structured content from LLM response
-    print("\n" + "="*80)
     print("📋 EXTRACTING STRUCTURED CONTENT FROM LLM RESPONSE")
-    print("="*80)
     
     # Extract and separate text from JSON
     full_information, dashboard_summary_json, recommendations_json = extract_text_and_json(llm_answer)
@@ -162,46 +161,18 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     )
 
     # Extract and create recommendations
-    print("\n" + "="*80)
     print("📋 EXTRACTING AND SAVING RECOMMENDATIONS")
-    print("="*80)
     
     # First try to extract recommendations from JSON if available
-    recommendations_saved = 0
-    if recommendations_json:
-        try:
-            parsed_recommendations = json.loads(recommendations_json)
-            if isinstance(parsed_recommendations, list) and parsed_recommendations:
-                print(f"📋 Saving {len(parsed_recommendations)} recommendations from JSON to database...")
-                
-                # Save each recommendation using the JSON structure
-                for recommendation_obj in parsed_recommendations:
-                    if isinstance(recommendation_obj, dict) and 'header' in recommendation_obj and 'text' in recommendation_obj:
-                        # For recommendations, team_name should actually be the quarter (PI)
-                        rec_payload = {
-                            "team_name": pi,  # Use PI name as team_name for recommendations
-                            "action_text": recommendation_obj['text'],
-                            "rational": recommendation_obj['header'],  # Use header as rational
-                            "date": today,
-                            "priority": "High",
-                            "status": "Proposed",
-                            "full_information": full_info_truncated,
-                            "information_json": json.dumps(recommendation_obj),  # Store individual recommendation JSON
-                        }
-                        rsc, rresp = client.create_recommendation(rec_payload)
-                        if rsc >= 300:
-                            print(f"⚠️ Create recommendation failed: {rsc} {rresp}")
-                        else:
-                            recommendations_saved += 1
-                            print(f"🧩 Recommendation: priority='High' status='Proposed' header='{recommendation_obj['header'][:60]}' text='{recommendation_obj['text'][:120]}'")
-                        
-                        # Limit to max recommendations
-                        if recommendations_saved >= 2:
-                            break
-                    else:
-                        print(f"⚠️ Skipping invalid recommendation object: {recommendation_obj}")
-        except json.JSONDecodeError as e:
-            print(f"❌ Failed to parse recommendations JSON: {e}")
+    # For recommendations, team_name should actually be the quarter (PI)
+    recommendations_saved = save_recommendations_from_json(
+        client=client,
+        recommendations_json=recommendations_json,
+        team_name_or_pi=pi,  # Use PI name as team_name for recommendations
+        today=today,
+        full_info_truncated=full_info_truncated,
+        max_count=2
+    )
     
     # Fallback to text-based extraction if no JSON recommendations found
     if recommendations_saved == 0:

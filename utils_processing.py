@@ -82,6 +82,68 @@ def extract_recommendations(llm_text: str, max_count: int = 2) -> List[str]:
     return cleaned
 
 
+def save_recommendations_from_json(
+    client: APIClient,
+    recommendations_json: str,
+    team_name_or_pi: str,
+    today: str,
+    full_info_truncated: str,
+    max_count: int = 2
+) -> int:
+    """
+    Parse and save recommendations from JSON string to database.
+    
+    Args:
+        client: APIClient instance for API calls
+        recommendations_json: JSON string containing recommendations array
+        team_name_or_pi: Team name (for Daily/Sprint) or PI name (for PI Sync)
+        today: Date string in ISO format
+        full_info_truncated: Truncated full information text
+        max_count: Maximum number of recommendations to save (default: 2)
+    
+    Returns:
+        Number of recommendations successfully saved (0 if none)
+    """
+    if not recommendations_json:
+        return 0
+    
+    recommendations_saved = 0
+    try:
+        parsed_recommendations = json.loads(recommendations_json)
+        if isinstance(parsed_recommendations, list) and parsed_recommendations:
+            print(f"📋 Saving {len(parsed_recommendations)} recommendations from JSON to database...")
+            
+            # Save each recommendation using the JSON structure
+            for recommendation_obj in parsed_recommendations:
+                if isinstance(recommendation_obj, dict) and 'header' in recommendation_obj and 'text' in recommendation_obj:
+                    rec_payload = {
+                        "team_name": team_name_or_pi,
+                        "action_text": recommendation_obj['text'],
+                        "rational": recommendation_obj['header'],  # Use header as rational
+                        "date": today,
+                        "priority": "High",
+                        "status": "Proposed",
+                        "full_information": full_info_truncated,
+                        "information_json": json.dumps(recommendation_obj),  # Store individual recommendation JSON
+                    }
+                    rsc, rresp = client.create_recommendation(rec_payload)
+                    if rsc >= 300:
+                        print(f"⚠️ Create recommendation failed: {rsc} {rresp}")
+                    else:
+                        recommendations_saved += 1
+                        print(f"🧩 Recommendation: priority='High' status='Proposed' header='{recommendation_obj['header'][:60]}' text='{recommendation_obj['text'][:120]}'")
+                    
+                    # Limit to max recommendations
+                    if recommendations_saved >= max_count:
+                        break
+                else:
+                    print(f"⚠️ Skipping invalid recommendation object: {recommendation_obj}")
+    except json.JSONDecodeError as e:
+        print(f"❌ Failed to parse recommendations JSON: {e}")
+    
+    return recommendations_saved
+
+
 def format_transcript(transcript: Dict[str, Any] | None, include_label: str = "Transcript:") -> str:
     """Format transcript data as markdown for LLM and UI display.
     
