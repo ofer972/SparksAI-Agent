@@ -7,7 +7,7 @@ import config
 
 
 class APIClient:
-    def __init__(self, base_url: Optional[str] = None, timeout_seconds: int = 30):
+    def __init__(self, base_url: Optional[str] = None, timeout_seconds: int = 60):
         self.base_url: str = (base_url or config.BASE_URL).rstrip("/")
         self.timeout_seconds: int = timeout_seconds
 
