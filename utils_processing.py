@@ -1,5 +1,7 @@
 import json
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Tuple, Optional
+
+from api_client import APIClient
 
 
 def filter_columns_excluding_points(columns: List[str]) -> List[str]:
@@ -457,4 +459,85 @@ def extract_pi_sync_review(llm_response: str) -> str | None:
         LLM_EXTRACTION_CONSTANTS.START_MARKER, 
         LLM_EXTRACTION_CONSTANTS.END_MARKER
     )
+
+
+def get_prompt_with_error_check(
+    client: APIClient,
+    email_address: str,
+    prompt_name: str,
+    job_type: str,
+    job_id: int | None = None,
+) -> Tuple[str | None, str | None]:
+    """
+    Fetch prompt from backend with error handling and automatic fallback.
+    
+    Args:
+        client: APIClient instance
+        email_address: Email address for prompt (e.g., "DailyAgent", "PIAgent")
+        prompt_name: Name of prompt (e.g., "Daily Insights", "PI Sync")
+        job_type: Job type for error messages (e.g., "Daily Agent")
+        job_id: Optional job ID for logging
+    
+    Returns:
+        Tuple of (prompt_text, error_message):
+        - If success: (prompt_text, None)
+        - If failure: (None, error_message)
+    
+    Behavior:
+        - Tries URL-encoded prompt name first
+        - Falls back to space-separated prompt name if 404
+        - Logs alert emoji (🚨) if prompt not found
+        - Returns error message suitable for job failure
+    """
+    # Try URL-encoded prompt name first
+    url_encoded_name = prompt_name.replace(" ", "%20")
+    status_code, response_data = client.get_prompt(email_address, url_encoded_name)
+    
+    # If 404, try space-separated version
+    if status_code == 404:
+        status_code, response_data = client.get_prompt(email_address, prompt_name)
+    
+    # Check for HTTP errors (other than 404 which we already handled)
+    if status_code != 200:
+        error_msg = f"Failed to fetch prompt '{prompt_name}' for {email_address}: HTTP {status_code}"
+        job_context = f" (Job ID: {job_id})" if job_id is not None else ""
+        print(f"🚨 ERROR FETCHING PROMPT: {prompt_name} for {email_address} - Status {status_code}{job_context}")
+        return None, error_msg
+    
+    # Check if response is valid dict
+    if not isinstance(response_data, dict):
+        error_msg = f"Prompt '{prompt_name}' for {email_address} returned invalid response format"
+        job_context = f" (Job ID: {job_id})" if job_id is not None else ""
+        print(f"🚨 PROMPT RESPONSE INVALID: {prompt_name} for {email_address} - Invalid response format{job_context}")
+        return None, error_msg
+    
+    # Extract prompt_description from nested response structure
+    prompt_text = None
+    if isinstance(response_data, dict):
+        # Try different response structures (API returns data.prompt.prompt_description)
+        data = response_data.get("data") or {}
+        if isinstance(data, dict):
+            # Check for nested prompt object: data.prompt.prompt_description
+            prompt_obj = data.get("prompt")
+            if isinstance(prompt_obj, dict):
+                prompt_text = prompt_obj.get("prompt_description")
+            # Fallback: check for direct prompt_description in data
+            if not prompt_text:
+                prompt_text = data.get("prompt_description")
+        # Final fallback: check root level
+        if not prompt_text:
+            prompt_text = response_data.get("prompt_description")
+    
+    # Check if prompt_description exists and is not empty
+    if not prompt_text or not isinstance(prompt_text, str) or not prompt_text.strip():
+        error_msg = f"Prompt '{prompt_name}' not found for {email_address}"
+        job_context = f" (Job ID: {job_id})" if job_id is not None else ""
+        print(f"🚨 PROMPT NOT FOUND: {prompt_name} for {email_address}{job_context}")
+        return None, error_msg
+    
+    # Success - log and return prompt
+    char_count = len(prompt_text)
+    job_context = f" (Job ID: {job_id})" if job_id is not None else ""
+    print(f"✅ Prompt fetched: {prompt_name} for {email_address} ({char_count} chars){job_context}")
+    return prompt_text, None
 

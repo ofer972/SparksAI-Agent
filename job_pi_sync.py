@@ -11,6 +11,7 @@ from utils_processing import (
     extract_recommendations,
     extract_text_and_json,
     extract_pi_sync_review,
+    get_prompt_with_error_check,
 )
 
 
@@ -65,10 +66,17 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     if sc == 200 and isinstance(data, dict):
         burndown_obj = data.get("data") or data
 
-    prompt_text = None
-    sc, data = client.get_prompt("PIAgent", "PISync")
-    if sc == 200 and isinstance(data, dict):
-        prompt_text = (data.get("data") or {}).get("prompt_description") or data.get("prompt_description")
+    # Fetch prompt with error checking
+    prompt_text, prompt_error = get_prompt_with_error_check(
+        client=client,
+        email_address="PIAgent",
+        prompt_name="PISync",
+        job_type="PI Sync",
+        job_id=int(job_id) if job_id is not None else None,
+    )
+    
+    if prompt_error:
+        return False, prompt_error
 
     # Build formatted input and update input_sent
     formatted = _format_input(transcript_obj, burndown_obj, prompt_text)

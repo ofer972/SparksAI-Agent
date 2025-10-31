@@ -11,6 +11,7 @@ from utils_processing import (
     extract_text_and_json,
     extract_content_between_markers,
     LLM_EXTRACTION_CONSTANTS,
+    get_prompt_with_error_check,
 )
 
 
@@ -41,13 +42,17 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
         if isinstance(burndown_records, dict):
             burndown_records = [burndown_records]
 
-    # Prompt
-    prompt_text = None
-    sc, pdata = client.get_prompt("DailyAgent", "Sprint%20Goal")
-    if sc == 404:
-        sc, pdata = client.get_prompt("DailyAgent", "Sprint Goal")
-    if sc == 200 and isinstance(pdata, dict):
-        prompt_text = (pdata.get("data") or {}).get("prompt_description") or pdata.get("prompt_description")
+    # Fetch prompt with error checking
+    prompt_text, prompt_error = get_prompt_with_error_check(
+        client=client,
+        email_address="DailyAgent",
+        prompt_name="Sprint Goal",
+        job_type="Sprint Goal",
+        job_id=int(job_id) if job_id is not None else None,
+    )
+    
+    if prompt_error:
+        return False, prompt_error
 
     # Build formatted text
     parts = ["SPRINT GOAL ANALYSIS DATA", "=" * 50, ""]

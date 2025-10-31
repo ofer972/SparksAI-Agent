@@ -11,6 +11,7 @@ from utils_processing import (
     extract_recommendations,
     extract_text_and_json,
     extract_daily_progress_review,
+    get_prompt_with_error_check,
 )
 
 
@@ -64,13 +65,17 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     except Exception:
         burndown_obj = None
 
-    # Prompt Daily Insights
-    prompt_text = None
-    sc, pdata = client.get_prompt("DailyAgent", "Daily%20Insights")
-    if sc == 404:
-        sc, pdata = client.get_prompt("DailyAgent", "Daily Insights")
-    if sc == 200 and isinstance(pdata, dict):
-        prompt_text = (pdata.get("data") or {}).get("prompt_description") or pdata.get("prompt_description")
+    # Fetch prompt with error checking
+    prompt_text, prompt_error = get_prompt_with_error_check(
+        client=client,
+        email_address="DailyAgent",
+        prompt_name="Daily Insights",
+        job_type="Daily Agent",
+        job_id=int(job_id) if job_id is not None else None,
+    )
+    
+    if prompt_error:
+        return False, prompt_error
 
     # Build formatted input and update input_sent
     formatted = _format_daily_input(transcript_obj, burndown_obj, prompt_text, team_name)
