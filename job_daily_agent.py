@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 import config
 from api_client import APIClient
-from llm_client import call_llm_generic
+from llm_client import call_agent_llm_process
 from utils_processing import (
     format_burndown_markdown,
     format_transcript,
@@ -77,10 +77,20 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     if job_id is not None:
         client.patch_agent_job(int(job_id), {"input_sent": formatted})
 
-    # Strict LLM call
-    ok, llm_answer, _raw = call_llm_generic(client, formatted_text=formatted, selected_pi=None)
+    # Call dedicated agent LLM processing endpoint
+    ok, llm_answer, _raw = call_agent_llm_process(
+        client=client,
+        prompt=formatted,
+        job_type="Daily Agent",
+        job_id=int(job_id) if job_id is not None else None,
+        metadata={"team_name": team_name},
+    )
     if not ok:
         return False, "AI chat failed or returned empty response"
+
+    # Print first 400 characters of LLM response
+    preview = llm_answer[:400] if llm_answer else ""
+    print(f"\n📥 LLM Response Preview (first 400 chars):\n{preview}{'...' if len(llm_answer) > 400 else ''}\n")
 
     # Extract structured content from LLM response
     print("\n" + "="*80)
@@ -208,10 +218,25 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
             if recommendations_saved >= 2:
                 break
 
-    result = (
-        f"Daily processed for {team_name}. Transcript={'yes' if transcript_obj else 'no'}, "
-        f"Burndown={'yes' if burndown_obj else 'no'}. Card upserted."
-    )
-    return True, result
+    # Create detailed result text with full LLM response (like old system)
+    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    result_text = f"""Daily Agent Analysis Completed
+
+Team: {team_name}
+Job ID: {job_id}
+Timestamp: {timestamp}
+
+Data Collected:
+- Transcript: {'Found' if transcript_obj else 'Not found'}
+- Burndown: {'Found' if burndown_obj else 'Not found'}
+- Prompt: {'Found' if prompt_text else 'Not found'}
+
+Data Sent to LLM: {len(formatted)} characters
+LLM Response Length: {len(llm_answer)} characters
+
+=== AI ANALYSIS ===
+{llm_answer}
+"""
+    return True, result_text
 
 

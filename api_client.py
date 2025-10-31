@@ -113,9 +113,9 @@ class APIClient:
         )
         return resp.status_code, self._safe_json(resp)
 
-    def post_ai_chat(self, body: Dict[str, Any]) -> Tuple[int, Any]:
+    def post_agent_llm_process(self, body: Dict[str, Any]) -> Tuple[int, Any]:
         resp = requests.post(
-            self._url("/api/v1/ai-chat"),
+            self._url("/api/v1/agent-llm-process"),
             headers=self._headers(),
             json=body,
             timeout=self.timeout_seconds,
