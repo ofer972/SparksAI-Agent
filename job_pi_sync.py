@@ -7,6 +7,7 @@ from api_client import APIClient
 from llm_client import call_agent_llm_process
 from utils_processing import (
     format_burndown_markdown,
+    format_pi_status,
     format_transcript,
     extract_recommendations,
     extract_text_and_json,
@@ -30,11 +31,15 @@ def _extract_pi(job: Dict[str, Any]) -> str | None:
     return None
 
 
-def _format_input(transcript: Dict[str, Any] | None, burndown: Dict[str, Any] | None, prompt: str | None) -> str:
+def _format_input(transcript: Dict[str, Any] | None, pi_status: Dict[str, Any] | None, burndown: Dict[str, Any] | None, prompt: str | None) -> str:
     parts: list[str] = []
     parts.append("=== PI SYNC DATA ===")
     parts.append("-- Latest Transcript --")
     parts.append(format_transcript(transcript, include_label="Transcript:"))
+    parts.append("")
+
+    parts.append("-- PI status for current date --")
+    parts.append(format_pi_status(pi_status))
     parts.append("")
 
     parts.append("-- PI Burndown Snapshot --")
@@ -62,6 +67,11 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     if sc == 200 and isinstance(data, dict):
         transcript_obj = (data.get("data") or {}).get("transcript") or data.get("data") or data
 
+    pi_status_obj = None
+    sc, data = client.get_pi_summary_today(pi)
+    if sc == 200 and isinstance(data, dict):
+        pi_status_obj = data.get("data") or data
+
     burndown_obj = None
     sc, data = client.get_pi_burndown(pi)
     if sc == 200 and isinstance(data, dict):
@@ -80,7 +90,7 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
         return False, prompt_error
 
     # Build formatted input and update input_sent
-    formatted = _format_input(transcript_obj, burndown_obj, prompt_text)
+    formatted = _format_input(transcript_obj, pi_status_obj, burndown_obj, prompt_text)
     if job_id is not None:
         client.patch_agent_job(int(job_id), {"input_sent": formatted})
 

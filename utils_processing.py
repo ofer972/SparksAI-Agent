@@ -269,6 +269,46 @@ def format_burndown_markdown(burndown: Dict[str, Any] | List[Dict[str, Any]] | N
     return "\n".join(lines) if lines else "No burndown data found"
 
 
+def format_pi_status(pi_status: Dict[str, Any] | List[Dict[str, Any]] | None) -> str:
+    """Format PI status data for LLM input.
+    
+    Args:
+        pi_status: PI status data dict from API (can contain 'data' list or be the list directly)
+        
+    Returns:
+        Formatted string with "column_name = value" for each field
+    """
+    if not pi_status:
+        return "No PI status data available for current date."
+    
+    # Extract the actual data list from response structure
+    status_list = None
+    if isinstance(pi_status, dict):
+        # Handle API response format: {"success": true, "data": [...], ...}
+        if "data" in pi_status and isinstance(pi_status["data"], list):
+            status_list = pi_status["data"]
+        else:
+            # If it's a dict but no 'data' key, treat it as a single status object
+            status_list = [pi_status]
+    elif isinstance(pi_status, list):
+        status_list = pi_status
+    
+    if not status_list or len(status_list) == 0:
+        return "No PI status data available for current date."
+    
+    # Format: "This is the status of the PI as of TODAY" followed by column = value
+    lines = ["This is the status of the PI as of TODAY"]
+    
+    # Get the first item (should only be one for a specific PI)
+    status_obj = status_list[0]
+    if isinstance(status_obj, dict):
+        # Format each column as "column_name = value"
+        for key, value in sorted(status_obj.items()):
+            lines.append(f"{key} = {value}")
+    
+    return "\n".join(lines)
+
+
 # LLM Response Extraction Constants
 class LLM_EXTRACTION_CONSTANTS:
     """Constants for LLM response extraction - shared across all extraction functions"""
