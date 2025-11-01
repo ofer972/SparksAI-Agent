@@ -162,8 +162,6 @@ def format_transcript(transcript: Dict[str, Any] | None, include_label: str = "T
     
     parts = []
     # Add metadata fields if available
-    if transcript.get("transcript_date"):
-        parts.append(f"Date: {transcript.get('transcript_date')}")
     if transcript.get("type"):
         parts.append(f"Type: {transcript.get('type')}")
     if transcript.get("team_name"):
