@@ -140,21 +140,27 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
         parts.append("-" * 20)
         
         # Header
-        parts.append("issue_key | issue_type | summary | description | status_category | flagged | dependency | Epic Link / Parent Key")
+        parts.append("issue_key | issue_summary | issue_description | issue_type | status_category | description | flagged | dependency | sprint_ids | epic_summary")
         parts.append("-" * 100)
         
         # Rows
         for issue in jira_issues:
             issue_key = issue.get('issue_key', '') or ''
+            issue_summary = str(issue.get('issue_summary', '') or '')[:50]  # Truncate if needed
+            issue_description = str(issue.get('issue_description', '') or '')
+            # Handle complex issue_description objects (like PropertyHolder)
+            if issue_description and not isinstance(issue_description, str):
+                issue_description = str(issue_description)[:50] if issue_description else ''
+            else:
+                issue_description = issue_description[:50] if issue_description else ''
             issue_type = issue.get('issue_type', '') or ''
-            summary = str(issue.get('summary', '') or '')[:50]  # Truncate if needed
+            status_category = issue.get('status_category', '') or ''
             description = str(issue.get('description', '') or '')
             # Handle complex description objects (like PropertyHolder)
             if description and not isinstance(description, str):
                 description = str(description)[:50] if description else ''
             else:
                 description = description[:50] if description else ''
-            status_category = issue.get('status_category', '') or ''
             
             # Format flagged: empty -> "False", "True" -> "True"
             flagged_raw = issue.get('flagged', '') or ''
@@ -164,9 +170,10 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
             dependency_raw = issue.get('dependency', '') or ''
             dependency = "True" if str(dependency_raw).strip().lower() == "true" else "False"
             
-            parent_key = issue.get('parent_key', '') or ''
+            sprint_ids = issue.get('sprint_ids', '') or ''
+            epic_summary = issue.get('epic_summary', '') or ''
             
-            parts.append(f"{issue_key} | {issue_type} | {summary} | {description} | {status_category} | {flagged} | {dependency} | {parent_key}")
+            parts.append(f"{issue_key} | {issue_summary} | {issue_description} | {issue_type} | {status_category} | {description} | {flagged} | {dependency} | {sprint_ids} | {epic_summary}")
         
         parts.append("")
     else:
