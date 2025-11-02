@@ -179,6 +179,32 @@ class APIClient:
         )
         return resp.status_code, self._safe_json(resp)
 
+    def get_sprint_issues_with_epic_for_llm(self, sprint_id: int, team_name: str) -> Tuple[int, Any]:
+        """Get sprint issues with epic data formatted for LLM.
+        
+        Args:
+            sprint_id: Sprint ID to get issues for
+            team_name: Team name to filter issues
+            
+        Returns:
+            Tuple of (status_code, response_data)
+            Response structure: {
+                "success": true,
+                "data": {
+                    "sprint_issues": [...],
+                    "count": int,
+                    "sprint_id": int
+                }
+            }
+        """
+        resp = requests.get(
+            self._url("/api/v1/sprints/sprint-issues-with-epic-for-llm"),
+            params={"sprint_id": sprint_id, "team_name": team_name},
+            headers=self._headers(),
+            timeout=self.timeout_seconds,
+        )
+        return resp.status_code, self._safe_json(resp)
+
     def get_prompt(self, email_address: str, prompt_name: str) -> Tuple[int, Any]:
         resp = requests.get(
             self._url(f"/api/v1/prompts/{email_address}/{prompt_name}"),

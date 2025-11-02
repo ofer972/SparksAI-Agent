@@ -78,12 +78,12 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     
     print(f"✅ Sprint goal found")
     
-    # Step 4: Get JIRA issues for the sprint
-    sc, issues_response = client.get_sprint_issues(sprint_id, team_name, limit=1000)
+    # Step 4: Get JIRA issues for the sprint with epic data
+    sc, issues_response = client.get_sprint_issues_with_epic_for_llm(sprint_id, team_name)
     
     jira_issues = []
-    if sc == 200 and issues_response.get("data", {}).get("issues"):
-        jira_issues = issues_response["data"]["issues"]
+    if sc == 200 and issues_response.get("success") and issues_response.get("data", {}).get("sprint_issues"):
+        jira_issues = issues_response["data"]["sprint_issues"]
         print(f"✅ Read {len(jira_issues)} issues from sprint")
     else:
         print(f"⚠️ No JIRA issues found for sprint (status: {sc})")
@@ -140,40 +140,40 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
         parts.append("-" * 20)
         
         # Header
-        parts.append("issue_key | issue_summary | issue_description | issue_type | status_category | description | flagged | dependency | sprint_ids | epic_summary")
+        parts.append("issue_key | issue_summary | issue_description | issue_type | status_category | flagged | dependency | epic_summary")
         parts.append("-" * 100)
         
         # Rows
         for issue in jira_issues:
             issue_key = issue.get('issue_key', '') or ''
             issue_summary = str(issue.get('issue_summary', '') or '')[:50]  # Truncate if needed
-            issue_description = str(issue.get('issue_description', '') or '')
-            # Handle complex issue_description objects (like PropertyHolder)
-            if issue_description and not isinstance(issue_description, str):
-                issue_description = str(issue_description)[:50] if issue_description else ''
-            else:
-                issue_description = issue_description[:50] if issue_description else ''
+            issue_description_raw = issue.get('issue_description') or None
+            issue_description = ''
+            if issue_description_raw:
+                if isinstance(issue_description_raw, str):
+                    issue_description = issue_description_raw[:50]
+                else:
+                    issue_description = str(issue_description_raw)[:50]
             issue_type = issue.get('issue_type', '') or ''
             status_category = issue.get('status_category', '') or ''
-            description = str(issue.get('description', '') or '')
-            # Handle complex description objects (like PropertyHolder)
-            if description and not isinstance(description, str):
-                description = str(description)[:50] if description else ''
+            
+            # Format flagged: array -> string representation
+            flagged_raw = issue.get('flagged', [])
+            if isinstance(flagged_raw, list):
+                flagged = str(flagged_raw) if flagged_raw else "[]"
             else:
-                description = description[:50] if description else ''
+                flagged = str(flagged_raw) if flagged_raw else "[]"
             
-            # Format flagged: empty -> "False", "True" -> "True"
-            flagged_raw = issue.get('flagged', '') or ''
-            flagged = "True" if str(flagged_raw).strip().lower() == "true" else "False"
+            # Format dependency: array -> string representation
+            dependency_raw = issue.get('dependency', [])
+            if isinstance(dependency_raw, list):
+                dependency = str(dependency_raw) if dependency_raw else "[]"
+            else:
+                dependency = str(dependency_raw) if dependency_raw else "[]"
             
-            # Format dependency: empty -> "False", "True" -> "True"
-            dependency_raw = issue.get('dependency', '') or ''
-            dependency = "True" if str(dependency_raw).strip().lower() == "true" else "False"
-            
-            sprint_ids = issue.get('sprint_ids', '') or ''
             epic_summary = issue.get('epic_summary', '') or ''
             
-            parts.append(f"{issue_key} | {issue_summary} | {issue_description} | {issue_type} | {status_category} | {description} | {flagged} | {dependency} | {sprint_ids} | {epic_summary}")
+            parts.append(f"{issue_key} | {issue_summary} | {issue_description} | {issue_type} | {status_category} | {flagged} | {dependency} | {epic_summary}")
         
         parts.append("")
     else:
