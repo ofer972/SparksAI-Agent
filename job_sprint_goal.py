@@ -147,14 +147,14 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
             
             # Handle each field
             formatted_issue['issue_key'] = issue.get('issue_key', '') or ''
-            formatted_issue['issue_summary'] = str(issue.get('issue_summary', '') or '')[:50]
+            formatted_issue['issue_summary'] = str(issue.get('issue_summary', '') or '')
             
             issue_description_raw = issue.get('issue_description') or None
             if issue_description_raw:
                 if isinstance(issue_description_raw, str):
-                    formatted_issue['issue_description'] = issue_description_raw[:50]
+                    formatted_issue['issue_description'] = issue_description_raw
                 else:
-                    formatted_issue['issue_description'] = str(issue_description_raw)[:50]
+                    formatted_issue['issue_description'] = str(issue_description_raw)
             else:
                 formatted_issue['issue_description'] = ''
             
@@ -180,7 +180,7 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
             formatted_issues.append(formatted_issue)
         
         # Format as table using the same function as burndown
-        table_formatted = format_table(formatted_issues)
+        table_formatted = format_table(formatted_issues, max_width=100)
         if table_formatted:
             parts.append(table_formatted)
         else:
