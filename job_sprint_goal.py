@@ -115,9 +115,16 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     parts.append("ACTIVE SPRINT STATUS:")
     parts.append("-" * 30)
     
-    # Filter out points columns and format as key: value
+    # Format sprint_goal specially
+    sprint_goal_text = sprint_data.get("sprint_goal", "")
+    if sprint_goal_text:
+        parts.append("**Sprint Goal:**")
+        parts.append(str(sprint_goal_text))
+        parts.append("")
+    
+    # Filter out points columns and sprint_goal, format remaining as key: value
     for key, value in sprint_data.items():
-        if 'point' not in key.lower():  # Exclude points columns
+        if 'point' not in key.lower() and key != 'sprint_goal':  # Exclude points columns and sprint_goal
             # Format the value
             if value is None:
                 formatted_value = ""
