@@ -140,8 +140,8 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
         parts.append("-" * 20)
         
         # Header
-        parts.append("issue_key | issue_type | summary | description | status_category")
-        parts.append("-" * 80)
+        parts.append("issue_key | issue_type | summary | description | status_category | flagged | dependency | Epic Link / Parent Key")
+        parts.append("-" * 100)
         
         # Rows
         for issue in jira_issues:
@@ -155,8 +155,11 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
             else:
                 description = description[:50] if description else ''
             status_category = issue.get('status_category', '') or ''
+            flagged = issue.get('flagged', '') or ''
+            dependency = issue.get('dependency', '') or ''
+            parent_key = issue.get('parent_key', '') or ''
             
-            parts.append(f"{issue_key} | {issue_type} | {summary} | {description} | {status_category}")
+            parts.append(f"{issue_key} | {issue_type} | {summary} | {description} | {status_category} | {flagged} | {dependency} | {parent_key}")
         
         parts.append("")
     else:
