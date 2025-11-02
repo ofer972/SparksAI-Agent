@@ -155,8 +155,15 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
             else:
                 description = description[:50] if description else ''
             status_category = issue.get('status_category', '') or ''
-            flagged = issue.get('flagged', '') or ''
-            dependency = issue.get('dependency', '') or ''
+            
+            # Format flagged: empty -> "False", "True" -> "True"
+            flagged_raw = issue.get('flagged', '') or ''
+            flagged = "True" if str(flagged_raw).strip().lower() == "true" else "False"
+            
+            # Format dependency: empty -> "False", "True" -> "True"
+            dependency_raw = issue.get('dependency', '') or ''
+            dependency = "True" if str(dependency_raw).strip().lower() == "true" else "False"
+            
             parent_key = issue.get('parent_key', '') or ''
             
             parts.append(f"{issue_key} | {issue_type} | {summary} | {description} | {status_category} | {flagged} | {dependency} | {parent_key}")
