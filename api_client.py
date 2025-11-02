@@ -122,6 +122,63 @@ class APIClient:
         )
         return resp.status_code, self._safe_json(resp)
 
+    def get_active_sprint_summary_by_team(self, team_name: str) -> Tuple[int, Any]:
+        """Get active sprint summary by team from active_sprint_summary_by_team view.
+        
+        Args:
+            team_name: Team name to get active sprint summary for
+            
+        Returns:
+            Tuple of (status_code, response_data)
+        """
+        resp = requests.get(
+            self._url("/api/v1/sprints/active-sprint-summary-by-team"),
+            params={"team_name": team_name},
+            headers=self._headers(),
+            timeout=self.timeout_seconds,
+        )
+        return resp.status_code, self._safe_json(resp)
+
+    def get_active_sprint_summary(self, sprint_id: int) -> Tuple[int, Any]:
+        """Get active sprint summary by sprint ID from active_sprint_summary view.
+        
+        Args:
+            sprint_id: Sprint ID to get summary for
+            
+        Returns:
+            Tuple of (status_code, response_data)
+        """
+        resp = requests.get(
+            self._url(f"/api/v1/sprints/active-sprint-summary/{sprint_id}"),
+            headers=self._headers(),
+            timeout=self.timeout_seconds,
+        )
+        return resp.status_code, self._safe_json(resp)
+
+    def get_sprint_issues(self, sprint_id: int, team_name: str, limit: int = 1000) -> Tuple[int, Any]:
+        """Get JIRA issues for a sprint.
+        
+        Args:
+            sprint_id: Sprint ID to get issues for
+            team_name: Team name to filter issues
+            limit: Maximum number of issues to return (default: 1000)
+            
+        Returns:
+            Tuple of (status_code, response_data)
+        """
+        params = {
+            "sprint_id": sprint_id,
+            "team_name": team_name,
+            "limit": limit
+        }
+        resp = requests.get(
+            self._url("/api/v1/issues"),
+            params=params,
+            headers=self._headers(),
+            timeout=self.timeout_seconds,
+        )
+        return resp.status_code, self._safe_json(resp)
+
     def get_prompt(self, email_address: str, prompt_name: str) -> Tuple[int, Any]:
         resp = requests.get(
             self._url(f"/api/v1/prompts/{email_address}/{prompt_name}"),

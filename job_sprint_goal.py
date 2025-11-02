@@ -5,7 +5,6 @@ import config
 from api_client import APIClient
 from llm_client import call_agent_llm_process
 from utils_processing import (
-    format_burndown_markdown,
     extract_recommendations,
     extract_text_and_json,
     extract_content_between_markers,
@@ -22,43 +21,75 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     if not team_name:
         return False, "Missing team_name in job payload"
 
-    # Fetch active sprints and validate sprint_goal
-    sc, sprints = client.get_sprints(team_name, sprint_status="active")
+    # Step 1: Get active sprint summaries for team
+    sc, summaries_response = client.get_active_sprint_summary_by_team(team_name)
     
-    active = None
-    sprint_names = []
-    if sc == 200 and isinstance(sprints, dict):
-        # API returns: { "success": true, "data": { "sprints": [...], ... } }
-        data = sprints.get("data") or {}
-        sprints_list = data.get("sprints") or []
-        if isinstance(sprints_list, list):
-            for sprint in sprints_list:
-                if isinstance(sprint, dict):
-                    sprint_name = sprint.get("name", "Unknown")  # Field is "name" not "sprint_name"
-                    sprint_names.append(sprint_name)
-            if sprints_list:
-                active = sprints_list[0]
+    if sc != 200:
+        error_msg = f"Failed to get active sprint summaries: HTTP {sc}"
+        if isinstance(summaries_response, dict) and "detail" in summaries_response:
+            error_msg += f" - {summaries_response.get('detail')}"
+        return False, error_msg
     
-    # Debug: Print sprint names found
-    if sprint_names:
-        print(f"🔍 Active sprints found: {', '.join(sprint_names)}")
-    else:
-        print(f"🔍 No active sprints found (status={sc})")
-
-    # Check for sprint_goal field (note: this field may not exist in API response)
-    sprint_goal = (active or {}).get("sprint_goal") if isinstance(active, dict) else None
+    summaries = summaries_response.get("data", {}).get("summaries", [])
+    if not summaries:
+        return True, "No active sprint summaries found for team"
+    
+    # Step 2: Find sprint with HIGHEST issues_at_start
+    sprint_with_max_issues = None
+    max_issues_at_start = -1
+    
+    for summary in summaries:
+        issues_at_start = summary.get("issues_at_start", 0)
+        # Handle different types (int, float, string)
+        if isinstance(issues_at_start, str):
+            try:
+                issues_at_start = int(issues_at_start)
+            except (ValueError, TypeError):
+                issues_at_start = 0
+        elif not isinstance(issues_at_start, (int, float)):
+            issues_at_start = 0
+        
+        if issues_at_start > max_issues_at_start:
+            max_issues_at_start = issues_at_start
+            sprint_with_max_issues = summary
+    
+    if not sprint_with_max_issues:
+        return True, "No valid sprint found (no issues_at_start data)"
+    
+    sprint_id = sprint_with_max_issues.get("sprint_id")
+    if not sprint_id:
+        return True, "No sprint_id found in active sprint summary"
+    
+    # Step 3: Get detailed sprint summary using sprint_id
+    sc, detailed_response = client.get_active_sprint_summary(sprint_id)
+    
+    if sc != 200:
+        return False, f"Failed to get detailed sprint summary for sprint_id {sprint_id}: HTTP {sc}"
+    
+    sprint_data = detailed_response.get("data", {}).get("summary", {})
+    if not sprint_data:
+        return False, f"No sprint data returned for sprint_id {sprint_id}"
+    
+    # Validate sprint_goal
+    sprint_goal = sprint_data.get("sprint_goal", "")
     if not sprint_goal or len(str(sprint_goal).strip()) < 10:
+        print("❌ Sprint goal not found")
         return True, "No sprint Goal found"
-
-    # Burndown for the (auto-selected) active sprint
-    burndown_records = None
-    sc, bd = client.get_team_sprint_burndown(team_name)
-    if sc == 200 and isinstance(bd, dict):
-        burndown_records = bd.get("data") or bd
-        if isinstance(burndown_records, dict):
-            burndown_records = [burndown_records]
-
-    # Fetch prompt with error checking
+    
+    print(f"✅ Sprint goal found")
+    
+    # Step 4: Get JIRA issues for the sprint
+    sc, issues_response = client.get_sprint_issues(sprint_id, team_name, limit=1000)
+    
+    jira_issues = []
+    if sc == 200 and issues_response.get("data", {}).get("issues"):
+        jira_issues = issues_response["data"]["issues"]
+        print(f"✅ Read {len(jira_issues)} issues from sprint")
+    else:
+        print(f"⚠️ No JIRA issues found for sprint (status: {sc})")
+        jira_issues = []
+    
+    # Step 5: Fetch prompt
     prompt_text, prompt_error = get_prompt_with_error_check(
         client=client,
         email_address="DailyAgent",
@@ -68,31 +99,79 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     )
     
     if prompt_error:
+        print("❌ Prompt not found")
         return False, prompt_error
-
-    # Build formatted text
+    
+    if prompt_text:
+        print("✅ Prompt found")
+    else:
+        print("❌ Prompt not found")
+    
+    # Step 6: Format data exactly as old project
     parts = ["SPRINT GOAL ANALYSIS DATA", "=" * 50, ""]
-    if isinstance(active, dict):
-        parts.append("ACTIVE SPRINT STATUS:")
-        parts.append("-" * 30)
-        for k, v in active.items():
-            parts.append(f"{k}: {v}")
+    
+    # ACTIVE SPRINT STATUS section
+    parts.append("ACTIVE SPRINT STATUS:")
+    parts.append("-" * 30)
+    
+    # Filter out points columns and format as key: value
+    for key, value in sprint_data.items():
+        if 'point' not in key.lower():  # Exclude points columns
+            # Format the value
+            if value is None:
+                formatted_value = ""
+            elif hasattr(value, 'isoformat'):  # datetime object
+                formatted_value = value.isoformat()
+            elif hasattr(value, 'strftime'):  # date object
+                formatted_value = value.strftime('%Y-%m-%d %H:%M:%S')
+            else:
+                formatted_value = str(value)
+            parts.append(f"{key}: {formatted_value}")
+    
+    parts.append("")
+    
+    # Current Date
+    parts.append(f"Current Date: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')}")
+    parts.append("")
+    
+    # JIRA ISSUES section
+    if jira_issues:
+        parts.append("JIRA ISSUES:")
+        parts.append("-" * 20)
+        
+        # Header
+        parts.append("issue_key | issue_type | summary | description | status_category")
+        parts.append("-" * 80)
+        
+        # Rows
+        for issue in jira_issues:
+            issue_key = issue.get('issue_key', '') or ''
+            issue_type = issue.get('issue_type', '') or ''
+            summary = str(issue.get('summary', '') or '')[:50]  # Truncate if needed
+            description = str(issue.get('description', '') or '')
+            # Handle complex description objects (like PropertyHolder)
+            if description and not isinstance(description, str):
+                description = str(description)[:50] if description else ''
+            else:
+                description = description[:50] if description else ''
+            status_category = issue.get('status_category', '') or ''
+            
+            parts.append(f"{issue_key} | {issue_type} | {summary} | {description} | {status_category}")
+        
         parts.append("")
-    parts.append(f"Current Date: {datetime.now(timezone.utc).isoformat()}")
-    parts.append("")
-    parts.append("SPRINT BURNDOWN:")
-    parts.append("-" * 20)
-    try:
-        burndown_formatted = format_burndown_markdown(burndown_records)
-        parts.append(burndown_formatted)
-    except Exception:
-        parts.append("No burndown data")
-    parts.append("")
+    else:
+        parts.append("JIRA ISSUES:")
+        parts.append("-" * 20)
+        parts.append("No issues found")
+        parts.append("")
+    
+    # ANALYSIS PROMPT section
     if prompt_text:
         parts.append("ANALYSIS PROMPT:")
         parts.append("-" * 20)
         parts.append(prompt_text)
         parts.append("")
+    
     formatted = "\n".join(parts)
 
     if job_id is not None:
@@ -106,6 +185,7 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
         job_id=int(job_id) if job_id is not None else None,
         metadata={"team_name": team_name},
     )
+    
     if not ok or not llm_answer:
         return False, "AI chat failed or returned empty response"
 

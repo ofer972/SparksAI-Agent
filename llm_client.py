@@ -34,7 +34,10 @@ def call_agent_llm_process(
     if metadata:
         body["metadata"] = metadata
     
-    status, data = client.post_agent_llm_process(body)
+    try:
+        status, data = client.post_agent_llm_process(body)
+    except Exception as e:
+        return False, "", {"error": str(e), "exception_type": type(e).__name__}
     
     if status == 200 and isinstance(data, dict) and data.get("success") and isinstance(data.get("data"), dict):
         llm_resp = data["data"].get("response")
