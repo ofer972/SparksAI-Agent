@@ -11,6 +11,7 @@ from utils_processing import (
     LLM_EXTRACTION_CONSTANTS,
     get_prompt_with_error_check,
     save_recommendations_from_json,
+    format_table,
 )
 
 
@@ -139,41 +140,51 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
         parts.append("JIRA ISSUES:")
         parts.append("-" * 20)
         
-        # Header
-        parts.append("issue_key | issue_summary | issue_description | issue_type | status_category | flagged | dependency | epic_summary")
-        parts.append("-" * 100)
-        
-        # Rows
+        # Prepare issues data for table formatting (format arrays as strings)
+        formatted_issues = []
         for issue in jira_issues:
-            issue_key = issue.get('issue_key', '') or ''
-            issue_summary = str(issue.get('issue_summary', '') or '')[:50]  # Truncate if needed
+            formatted_issue = {}
+            
+            # Handle each field
+            formatted_issue['issue_key'] = issue.get('issue_key', '') or ''
+            formatted_issue['issue_summary'] = str(issue.get('issue_summary', '') or '')[:50]
+            
             issue_description_raw = issue.get('issue_description') or None
-            issue_description = ''
             if issue_description_raw:
                 if isinstance(issue_description_raw, str):
-                    issue_description = issue_description_raw[:50]
+                    formatted_issue['issue_description'] = issue_description_raw[:50]
                 else:
-                    issue_description = str(issue_description_raw)[:50]
-            issue_type = issue.get('issue_type', '') or ''
-            status_category = issue.get('status_category', '') or ''
+                    formatted_issue['issue_description'] = str(issue_description_raw)[:50]
+            else:
+                formatted_issue['issue_description'] = ''
+            
+            formatted_issue['issue_type'] = issue.get('issue_type', '') or ''
+            formatted_issue['status_category'] = issue.get('status_category', '') or ''
             
             # Format flagged: array -> string representation
             flagged_raw = issue.get('flagged', [])
             if isinstance(flagged_raw, list):
-                flagged = str(flagged_raw) if flagged_raw else "[]"
+                formatted_issue['flagged'] = str(flagged_raw) if flagged_raw else "[]"
             else:
-                flagged = str(flagged_raw) if flagged_raw else "[]"
+                formatted_issue['flagged'] = str(flagged_raw) if flagged_raw else "[]"
             
             # Format dependency: array -> string representation
             dependency_raw = issue.get('dependency', [])
             if isinstance(dependency_raw, list):
-                dependency = str(dependency_raw) if dependency_raw else "[]"
+                formatted_issue['dependency'] = str(dependency_raw) if dependency_raw else "[]"
             else:
-                dependency = str(dependency_raw) if dependency_raw else "[]"
+                formatted_issue['dependency'] = str(dependency_raw) if dependency_raw else "[]"
             
-            epic_summary = issue.get('epic_summary', '') or ''
+            formatted_issue['epic_summary'] = issue.get('epic_summary', '') or ''
             
-            parts.append(f"{issue_key} | {issue_summary} | {issue_description} | {issue_type} | {status_category} | {flagged} | {dependency} | {epic_summary}")
+            formatted_issues.append(formatted_issue)
+        
+        # Format as table using the same function as burndown
+        table_formatted = format_table(formatted_issues)
+        if table_formatted:
+            parts.append(table_formatted)
+        else:
+            parts.append("No issues found")
         
         parts.append("")
     else:
