@@ -61,15 +61,8 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     if not sprint_id:
         return True, "No sprint_id found in active sprint summary"
     
-    # Step 3: Get detailed sprint summary using sprint_id
-    sc, detailed_response = client.get_active_sprint_summary(sprint_id)
-    
-    if sc != 200:
-        return False, f"Failed to get detailed sprint summary for sprint_id {sprint_id}: HTTP {sc}"
-    
-    sprint_data = detailed_response.get("data", {}).get("summary", {})
-    if not sprint_data:
-        return False, f"No sprint data returned for sprint_id {sprint_id}"
+    # Use sprint data directly from the selected summary (no second endpoint call)
+    sprint_data = sprint_with_max_issues
     
     # Validate sprint_goal
     sprint_goal = sprint_data.get("sprint_goal", "")
@@ -79,7 +72,7 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     
     print(f"✅ Sprint goal found")
     
-    # Step 4: Get JIRA issues for the sprint with epic data
+    # Step 3: Get JIRA issues for the sprint with epic data
     sc, issues_response = client.get_sprint_issues_with_epic_for_llm(sprint_id, team_name)
     
     jira_issues = []
@@ -90,7 +83,7 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
         print(f"⚠️ No JIRA issues found for sprint (status: {sc})")
         jira_issues = []
     
-    # Step 5: Fetch prompt
+    # Step 4: Fetch prompt
     prompt_text, prompt_error = get_prompt_with_error_check(
         client=client,
         email_address="DailyAgent",
@@ -108,7 +101,7 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     else:
         print("❌ Prompt not found")
     
-    # Step 6: Format data exactly as old project
+    # Step 5: Format data exactly as old project
     parts = ["SPRINT GOAL ANALYSIS DATA", "=" * 50, ""]
     
     # ACTIVE SPRINT STATUS section
