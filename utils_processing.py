@@ -316,6 +316,12 @@ class LLM_EXTRACTION_CONSTANTS:
     MAX_RECOMMENDATIONS = 2  # Maximum number of recommendations to extract
 
 
+class PROMPT_FORMAT_CONSTANTS:
+    """Constants for prompt formatting in input_sent - shared across all job types"""
+    PROMPT_BEGIN = "===> Prompt:"
+    PROMPT_END = "===> End Prompt."
+
+
 def extract_content_between_markers(
     llm_response: str, 
     start_marker: str, 

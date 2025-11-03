@@ -12,6 +12,7 @@ from utils_processing import (
     extract_daily_progress_review,
     get_prompt_with_error_check,
     save_recommendations_from_json,
+    PROMPT_FORMAT_CONSTANTS,
 )
 
 
@@ -37,8 +38,9 @@ def _format_daily_input(transcript: Dict[str, Any] | None, burndown_records: Any
 
     # Prompt
     if prompt:
-        parts.append("=== PROMPT ===")
+        parts.append(PROMPT_FORMAT_CONSTANTS.PROMPT_BEGIN)
         parts.append(prompt)
+        parts.append(PROMPT_FORMAT_CONSTANTS.PROMPT_END)
 
     return "\n".join(parts)
 

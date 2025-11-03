@@ -14,6 +14,7 @@ from utils_processing import (
     extract_pi_sync_review,
     get_prompt_with_error_check,
     save_recommendations_from_json,
+    PROMPT_FORMAT_CONSTANTS,
 )
 
 
@@ -47,8 +48,9 @@ def _format_input(transcript: Dict[str, Any] | None, pi_status: Dict[str, Any] |
     parts.append("")
 
     if prompt:
-        parts.append("-- Prompt --")
+        parts.append(PROMPT_FORMAT_CONSTANTS.PROMPT_BEGIN)
         parts.append(prompt)
+        parts.append(PROMPT_FORMAT_CONSTANTS.PROMPT_END)
 
     return "\n".join(parts)
 

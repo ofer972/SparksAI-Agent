@@ -12,6 +12,7 @@ from utils_processing import (
     get_prompt_with_error_check,
     save_recommendations_from_json,
     format_table,
+    PROMPT_FORMAT_CONSTANTS,
 )
 
 
@@ -195,9 +196,9 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     
     # ANALYSIS PROMPT section
     if prompt_text:
-        parts.append("ANALYSIS PROMPT:")
-        parts.append("-" * 20)
+        parts.append(PROMPT_FORMAT_CONSTANTS.PROMPT_BEGIN)
         parts.append(prompt_text)
+        parts.append(PROMPT_FORMAT_CONSTANTS.PROMPT_END)
         parts.append("")
     
     formatted = "\n".join(parts)
