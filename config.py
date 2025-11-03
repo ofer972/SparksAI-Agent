@@ -8,6 +8,7 @@ JOB_TYPES = [
     "Daily Agent",
     "Sprint Goal",
     "PI Sync",
+    "Team PI Insight",
 ]
 
 # Polling intervals (defaults match current project behavior)
