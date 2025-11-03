@@ -91,7 +91,7 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     # Extract structured content from LLM response and save card
     print("📋 EXTRACTING STRUCTURED CONTENT FROM LLM RESPONSE")
     
-    description, full_info_truncated, raw_json_string = process_llm_response_and_save_ai_card(
+    description, full_info_truncated, raw_json_string, card_id = process_llm_response_and_save_ai_card(
         client=client,
         llm_answer=llm_answer,
         team_name=job.get("team_name"),
@@ -124,7 +124,8 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
         today=today,
         full_info_truncated=full_info_truncated,
         max_count=2,
-        job_id=int(job_id) if job_id is not None else None
+        job_id=int(job_id) if job_id is not None else None,
+        source_ai_summary_id=card_id,
     )
     
     # Fallback to text-based extraction if no JSON recommendations found
@@ -141,6 +142,7 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
                 "status": "Proposed",
                 "full_information": full_info_truncated,
                 "source_job_id": int(job_id) if job_id is not None else None,
+                "source_ai_summary_id": card_id,
             }
             rsc, rresp = client.create_recommendation(rec_payload)
             if rsc >= 300:

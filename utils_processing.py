@@ -89,7 +89,8 @@ def save_recommendations_from_json(
     today: str,
     full_info_truncated: str,
     max_count: int = 2,
-    job_id: int | None = None
+    job_id: int | None = None,
+    source_ai_summary_id: int | None = None,
 ) -> int:
     """
     Parse and save recommendations from JSON string to database.
@@ -102,6 +103,7 @@ def save_recommendations_from_json(
         full_info_truncated: Truncated full information text
         max_count: Maximum number of recommendations to save (default: 2)
         job_id: Optional job ID that triggered this recommendation
+        source_ai_summary_id: ID of the AI summary card that generated these recommendations
     
     Returns:
         Number of recommendations successfully saved (0 if none)
@@ -128,7 +130,11 @@ def save_recommendations_from_json(
                         "full_information": full_info_truncated,
                         "information_json": json.dumps(recommendation_obj),  # Store individual recommendation JSON
                         "source_job_id": job_id,
+                        "source_ai_summary_id": source_ai_summary_id,
                     }
+                    # Debug: Log the payload being sent
+                    if source_ai_summary_id is None:
+                        print(f"⚠️ WARNING: source_ai_summary_id is None when creating recommendation")
                     rsc, rresp = client.create_recommendation(rec_payload)
                     if rsc >= 300:
                         print(f"⚠️ Create recommendation failed: {rsc} {rresp}")
@@ -760,7 +766,7 @@ def process_llm_response_and_save_ai_card(
         extract_content_fn: Function to extract description from LLM response (default: extract_pi_sync_review)
     
     Returns:
-        Tuple of (description, full_information, raw_json_string)
+        Tuple of (description, full_information, raw_json_string, card_id)
     """
     from datetime import datetime, timezone
     
@@ -798,8 +804,9 @@ def process_llm_response_and_save_ai_card(
     if raw_json_string:
         card_payload["information_json"] = raw_json_string
     
-    # Upsert card based on type
+    # Upsert card based on type and extract card_id
     upsert_done = False
+    card_id = None
     if card_type == "PI":
         sc, cards = client.list_pi_ai_cards()
         if sc == 200 and isinstance(cards, dict):
@@ -810,7 +817,8 @@ def process_llm_response_and_save_ai_card(
                         same_date = str(c.get("date", ""))[:10] == today
                         if same_date and c.get("team_name") == card_payload["team_name"] and c.get("pi") == card_payload.get("pi") and c.get("card_name") == card_payload["card_name"]:
                             # Patch existing
-                            psc, presp = client.patch_pi_ai_card(int(c.get("id")), card_payload)
+                            card_id = int(c.get("id"))
+                            psc, presp = client.patch_pi_ai_card(card_id, card_payload)
                             if psc >= 300:
                                 print(f"⚠️ Patch pi-ai-card failed: {psc} {presp}")
                             upsert_done = psc < 300
@@ -819,7 +827,10 @@ def process_llm_response_and_save_ai_card(
                         continue
         if not upsert_done:
             csc, cresp = client.create_pi_ai_card(card_payload)
-            if csc >= 300:
+            if csc < 300 and isinstance(cresp, dict):
+                # Extract from response.data.card.id structure
+                card_id = cresp.get("data", {}).get("card", {}).get("id")
+            elif csc >= 300:
                 print(f"⚠️ Create pi-ai-card failed: {csc} {cresp}")
     elif card_type == "Team":
         sc, cards = client.list_team_ai_cards()
@@ -831,7 +842,8 @@ def process_llm_response_and_save_ai_card(
                         same_date = str(c.get("date", ""))[:10] == today
                         if same_date and c.get("team_name") == card_payload["team_name"] and c.get("card_name") == card_payload["card_name"]:
                             # Patch existing
-                            psc, presp = client.patch_team_ai_card(int(c.get("id")), card_payload)
+                            card_id = int(c.get("id"))
+                            psc, presp = client.patch_team_ai_card(card_id, card_payload)
                             if psc >= 300:
                                 print(f"⚠️ Patch team-ai-card failed: {psc} {presp}")
                             upsert_done = psc < 300
@@ -840,7 +852,10 @@ def process_llm_response_and_save_ai_card(
                         continue
         if not upsert_done:
             csc, cresp = client.create_team_ai_card(card_payload)
-            if csc >= 300:
+            if csc < 300 and isinstance(cresp, dict):
+                # Extract from response.data.card.id structure
+                card_id = cresp.get("data", {}).get("card", {}).get("id")
+            elif csc >= 300:
                 print(f"⚠️ Create team-ai-card failed: {csc} {cresp}")
     
     # Short log of the created card insight
@@ -849,4 +864,10 @@ def process_llm_response_and_save_ai_card(
         f"🗂️ Card insight: name='{card_payload['card_name']}' type='{card_payload['card_type']}' priority='{card_payload['priority']}' preview='{desc_preview}'"
     )
     
-    return description, full_info_truncated, raw_json_string
+    # Log card_id for debugging
+    if card_id is not None:
+        print(f"✅ Card ID extracted: {card_id}")
+    else:
+        print(f"⚠️ WARNING: Card ID is None - source_ai_summary_id will be None in recommendations")
+    
+    return description, full_info_truncated, raw_json_string, card_id
