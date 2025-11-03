@@ -1,5 +1,5 @@
 import json
-from typing import Any, Dict, List, Tuple, Optional
+from typing import Any, Callable, Dict, List, Tuple, Optional
 
 from api_client import APIClient
 
@@ -651,3 +651,202 @@ def get_prompt_with_error_check(
     print(f"✅ Prompt fetched: {prompt_name} for {email_address} ({char_count} chars){job_context}")
     return prompt_text, None
 
+
+def fetch_pi_data_for_analysis(
+    client: APIClient,
+    pi: str,
+    team_name: str | None = None,
+    include_transcript: bool = True,
+) -> Tuple[Dict[str, Any] | None, Dict[str, Any] | None, Dict[str, Any] | None]:
+    """
+    Fetch PI-related data for analysis (transcript, PI status, burndown).
+    
+    Args:
+        client: APIClient instance
+        pi: PI name/identifier
+        team_name: Optional team name to pass to PI status and burndown endpoints
+        include_transcript: Whether to fetch transcript (default: True)
+    
+    Returns:
+        Tuple of (transcript_obj, pi_status_obj, burndown_obj)
+    """
+    # Fetch transcript only if requested
+    transcript_obj = None
+    if include_transcript:
+        sc, data = client.get_latest_pi_sync_transcript(pi)
+        if sc == 200 and isinstance(data, dict):
+            transcript_obj = (data.get("data") or {}).get("transcript") or data.get("data") or data
+
+    # Always fetch PI status
+    pi_status_obj = None
+    sc, data = client.get_pi_summary_today(pi, team_name=team_name)
+    if sc == 200 and isinstance(data, dict):
+        pi_status_obj = data.get("data") or data
+
+    # Always fetch burndown
+    burndown_obj = None
+    sc, data = client.get_pi_burndown(pi, team_name=team_name)
+    if sc == 200 and isinstance(data, dict):
+        burndown_obj = data.get("data") or data
+
+    return transcript_obj, pi_status_obj, burndown_obj
+
+
+def format_pi_analysis_input(
+    transcript: Dict[str, Any] | None,
+    pi_status: Dict[str, Any] | None,
+    burndown: Dict[str, Any] | None,
+    prompt: str | None,
+    header_title: str = "PI SYNC DATA",
+    include_transcript_section: bool = True,
+) -> str:
+    """
+    Format PI analysis input for LLM.
+    
+    Args:
+        transcript: Transcript data (or None)
+        pi_status: PI status data (or None)
+        burndown: Burndown data (or None)
+        prompt: Prompt text (or None)
+        header_title: Custom header title (default: "PI SYNC DATA")
+        include_transcript_section: Whether to include transcript section (default: True)
+    
+    Returns:
+        Formatted string for LLM input
+    """
+    parts: list[str] = []
+    parts.append(f"==={header_title}===")
+    
+    if include_transcript_section:
+        parts.append("-- Latest Transcript --")
+        parts.append(format_transcript(transcript, include_label="Transcript:"))
+        parts.append("")
+
+    parts.append("-- PI status for current date --")
+    parts.append(format_pi_status(pi_status))
+    parts.append("")
+
+    parts.append("-- PI Burndown Snapshot --")
+    parts.append(format_burndown_markdown(burndown))
+    parts.append("")
+
+    if prompt:
+        parts.append(PROMPT_FORMAT_CONSTANTS.PROMPT_BEGIN)
+        parts.append(prompt)
+        parts.append(PROMPT_FORMAT_CONSTANTS.PROMPT_END)
+
+    return "\n".join(parts)
+
+
+def process_llm_response_and_save_ai_card(
+    client: APIClient,
+    llm_answer: str,
+    team_name: str | None,
+    job_id: int | None,
+    card_config: Dict[str, Any],
+    card_type: str,  # "PI" or "Team"
+    extract_content_fn: Callable[[str], str | None] = extract_pi_sync_review,
+) -> Tuple[str, str, str]:
+    """
+    Process LLM response, extract structured content, and save AI cards.
+    
+    Args:
+        client: APIClient instance
+        llm_answer: Full LLM response text
+        team_name: Team name from job
+        job_id: Optional job ID
+        card_config: Dict with keys: card_name, card_type, priority, source, pi (if PI card)
+        card_type: "PI" for pi-ai-cards, "Team" for team-ai-cards
+        extract_content_fn: Function to extract description from LLM response (default: extract_pi_sync_review)
+    
+    Returns:
+        Tuple of (description, full_information, raw_json_string)
+    """
+    from datetime import datetime, timezone
+    
+    # Extract and separate text from JSON
+    full_information, dashboard_summary_json, recommendations_json, raw_json_string = extract_text_and_json(llm_answer)
+    
+    # Extract description using provided function
+    extracted_content = extract_content_fn(llm_answer)
+    
+    # Use extracted section if available, otherwise fallback to full response (truncated)
+    description = extracted_content if extracted_content else llm_answer[:2000]
+    
+    # Truncate full_information if needed (for database storage)
+    full_info_truncated = full_information[:2000] if len(full_information) > 2000 else full_information
+
+    # Create card payload
+    today = datetime.now(timezone.utc).date().isoformat()
+    card_payload = {
+        "team_name": team_name,
+        "card_name": card_config.get("card_name"),
+        "card_type": card_config.get("card_type"),
+        "description": description[:2000],  # Truncate description if too long
+        "date": today,
+        "priority": card_config.get("priority", "Critical"),
+        "source": card_config.get("source", "PI"),
+        "source_job_id": job_id,
+        "full_information": full_info_truncated,
+    }
+    
+    # Add PI if present in config (for PI cards)
+    if "pi" in card_config:
+        card_payload["pi"] = card_config["pi"]
+    
+    # Add information_json with raw JSON string from BEGIN_JSON/END_JSON
+    if raw_json_string:
+        card_payload["information_json"] = raw_json_string
+    
+    # Upsert card based on type
+    upsert_done = False
+    if card_type == "PI":
+        sc, cards = client.list_pi_ai_cards()
+        if sc == 200 and isinstance(cards, dict):
+            items = cards.get("data") or cards
+            if isinstance(items, list):
+                for c in items:
+                    try:
+                        same_date = str(c.get("date", ""))[:10] == today
+                        if same_date and c.get("team_name") == card_payload["team_name"] and c.get("pi") == card_payload.get("pi") and c.get("card_name") == card_payload["card_name"]:
+                            # Patch existing
+                            psc, presp = client.patch_pi_ai_card(int(c.get("id")), card_payload)
+                            if psc >= 300:
+                                print(f"⚠️ Patch pi-ai-card failed: {psc} {presp}")
+                            upsert_done = psc < 300
+                            break
+                    except Exception:
+                        continue
+        if not upsert_done:
+            csc, cresp = client.create_pi_ai_card(card_payload)
+            if csc >= 300:
+                print(f"⚠️ Create pi-ai-card failed: {csc} {cresp}")
+    elif card_type == "Team":
+        sc, cards = client.list_team_ai_cards()
+        if sc == 200 and isinstance(cards, dict):
+            items = cards.get("data") or cards
+            if isinstance(items, list):
+                for c in items:
+                    try:
+                        same_date = str(c.get("date", ""))[:10] == today
+                        if same_date and c.get("team_name") == card_payload["team_name"] and c.get("card_name") == card_payload["card_name"]:
+                            # Patch existing
+                            psc, presp = client.patch_team_ai_card(int(c.get("id")), card_payload)
+                            if psc >= 300:
+                                print(f"⚠️ Patch team-ai-card failed: {psc} {presp}")
+                            upsert_done = psc < 300
+                            break
+                    except Exception:
+                        continue
+        if not upsert_done:
+            csc, cresp = client.create_team_ai_card(card_payload)
+            if csc >= 300:
+                print(f"⚠️ Create team-ai-card failed: {csc} {cresp}")
+    
+    # Short log of the created card insight
+    desc_preview = (card_payload["description"] or "")[:120]
+    print(
+        f"🗂️ Card insight: name='{card_payload['card_name']}' type='{card_payload['card_type']}' priority='{card_payload['priority']}' preview='{desc_preview}'"
+    )
+    
+    return description, full_info_truncated, raw_json_string

@@ -72,27 +72,34 @@ class APIClient:
         )
         return resp.status_code, self._safe_json(resp)
 
-    def get_pi_burndown(self, pi: str) -> Tuple[int, Any]:
+    def get_pi_burndown(self, pi: str, team_name: str | None = None) -> Tuple[int, Any]:
+        params: Dict[str, Any] = {"pi": pi}
+        if team_name:
+            params["team_name"] = team_name
         resp = requests.get(
             self._url("/api/v1/pis/burndown"),
-            params={"pi": pi},
+            params=params,
             headers=self._headers(),
             timeout=self.timeout_seconds,
         )
         return resp.status_code, self._safe_json(resp)
 
-    def get_pi_summary_today(self, pi: str) -> Tuple[int, Any]:
+    def get_pi_summary_today(self, pi: str, team_name: str | None = None) -> Tuple[int, Any]:
         """Get PI status summary for current date.
         
         Args:
             pi: PI name/identifier
+            team_name: Optional team name to filter by
             
         Returns:
             Tuple of (status_code, response_data)
         """
+        params: Dict[str, Any] = {"pi": pi}
+        if team_name:
+            params["team_name"] = team_name
         resp = requests.get(
             self._url("/api/v1/pis/get-pi-status-for-today"),
-            params={"pi": pi},
+            params=params,
             headers=self._headers(),
             timeout=self.timeout_seconds,
         )
