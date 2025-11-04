@@ -120,12 +120,15 @@ def save_recommendations_from_json(
             # Save each recommendation using the JSON structure
             for recommendation_obj in parsed_recommendations:
                 if isinstance(recommendation_obj, dict) and 'header' in recommendation_obj and 'text' in recommendation_obj:
+                    # Get priority from JSON if available, otherwise default to "Important"
+                    priority = recommendation_obj.get('priority', 'Important')
+                    
                     rec_payload = {
                         "team_name": team_name_or_pi,
                         "action_text": recommendation_obj['text'],
                         "rational": recommendation_obj['header'],  # Use header as rational
                         "date": today,
-                        "priority": "High",
+                        "priority": priority,
                         "status": "Proposed",
                         "full_information": full_info_truncated,
                         "information_json": json.dumps(recommendation_obj),  # Store individual recommendation JSON
@@ -140,7 +143,7 @@ def save_recommendations_from_json(
                         print(f"⚠️ Create recommendation failed: {rsc} {rresp}")
                     else:
                         recommendations_saved += 1
-                        print(f"🧩 Recommendation: priority='High' status='Proposed' header='{recommendation_obj['header'][:60]}' text='{recommendation_obj['text'][:120]}'")
+                        print(f"🧩 Recommendation: priority='{priority}' status='Proposed' header='{recommendation_obj['header'][:60]}' text='{recommendation_obj['text'][:120]}'")
                     
                     # Limit to max recommendations
                     if recommendations_saved >= max_count:
