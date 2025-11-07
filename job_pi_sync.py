@@ -7,7 +7,7 @@ from api_client import APIClient
 from llm_client import call_agent_llm_process
 from utils_processing import (
     extract_recommendations,
-    extract_pi_sync_review,
+    extract_review_section,
     extract_text_and_json,
     fetch_pi_data_for_analysis,
     format_pi_analysis_input,
@@ -113,7 +113,7 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
             "source": "PI",
         },
         card_type="PI",
-        extract_content_fn=extract_pi_sync_review,
+        extract_content_fn=extract_review_section,
     )
     
     # Extract recommendations_json from LLM response for recommendations saving

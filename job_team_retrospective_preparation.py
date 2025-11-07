@@ -7,6 +7,7 @@ from llm_client import call_agent_llm_process
 from utils_processing import (
     extract_recommendations,
     extract_text_and_json,
+    extract_review_section,
     get_prompt_with_error_check,
     get_team_sprint_burndown_for_analysis,
     get_transcripts_for_analysis,
@@ -108,7 +109,7 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
             "source": "Team Retrospective Preparation",
         },
         card_type="Team",
-        extract_content_fn=extract_text_and_json,  # Use generic extraction
+        extract_content_fn=extract_review_section,
     )
     
     # Extract recommendations_json from LLM response for recommendations saving
@@ -122,13 +123,30 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
         save_recommendations_from_json(
             client=client,
             recommendations_json=recommendations_json,
-            team_name=team_name,
-            source="Team Retrospective Preparation",
-            date=today,
+            team_name_or_pi=team_name,
+            today=today,
+            full_info_truncated=full_info_truncated,
+            max_count=2,
+            job_id=int(job_id) if job_id is not None else None,
+            source_ai_summary_id=card_id,
         )
         print("✅ Recommendations saved")
     else:
         print("ℹ️  No recommendations found in LLM response")
 
-    return True, f"Team Retrospective Preparation completed successfully. Card ID: {card_id}"
+    # Create detailed result text with full LLM response (like other jobs)
+    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    result_text = f"""Team Retrospective Preparation Analysis Completed
+
+Team: {team_name}
+Job ID: {job_id}
+Timestamp: {timestamp}
+
+Data Sent to LLM: {len(formatted)} characters
+LLM Response Length: {len(llm_answer)} characters
+
+=== AI ANALYSIS ===
+{llm_answer}
+"""
+    return True, result_text
 

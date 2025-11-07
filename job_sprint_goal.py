@@ -7,8 +7,7 @@ from llm_client import call_agent_llm_process
 from utils_processing import (
     extract_recommendations,
     extract_text_and_json,
-    extract_content_between_markers,
-    LLM_EXTRACTION_CONSTANTS,
+    extract_review_section,
     get_prompt_with_error_check,
     save_recommendations_from_json,
     get_active_sprint_summary_by_team_for_analysis,
@@ -101,14 +100,6 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     # Extract structured content from LLM response and save card
     print("📋 EXTRACTING STRUCTURED CONTENT FROM LLM RESPONSE")
     
-    # Helper function to extract sprint goal content using markers
-    def extract_sprint_goal_review(llm_response: str) -> str | None:
-        return extract_content_between_markers(
-            llm_response,
-            LLM_EXTRACTION_CONSTANTS.START_MARKER,
-            LLM_EXTRACTION_CONSTANTS.END_MARKER
-        )
-    
     description, full_info_truncated, raw_json_string, card_id = process_llm_response_and_save_ai_card(
         client=client,
         llm_answer=llm_answer,
@@ -121,7 +112,7 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
             "source": "Sprint Goal",
         },
         card_type="Team",
-        extract_content_fn=extract_sprint_goal_review,
+        extract_content_fn=extract_review_section,
     )
     
     # Extract recommendations_json from LLM response for recommendations saving

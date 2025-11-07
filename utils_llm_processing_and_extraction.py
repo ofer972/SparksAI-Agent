@@ -339,40 +339,34 @@ def extract_text_and_json(llm_response: str) -> Tuple[str, str, str, str]:
         return llm_response, "", "", ""
 
 
-def extract_daily_progress_review(llm_response: str) -> str | None:
+def extract_review_section(llm_response: str) -> str | None:
     """
-    Extract the "Daily Progress Review" section from LLM response using markers
+    Extract the review section from LLM response using shared markers.
+    This is a shared function used by all job types (Daily Agent, Sprint Goal, PI Sync, etc.)
     
     Args:
         llm_response: The full LLM response text
     
     Returns:
-        str: The extracted "Daily Progress Review" section, or None if start marker not found,
-             empty string if end marker not found
+        str: The extracted review section between START_MARKER and END_MARKER,
+             or None if start marker not found, empty string if end marker not found
     """
     return extract_content_between_markers(
-        llm_response, 
-        LLM_EXTRACTION_CONSTANTS.START_MARKER, 
+        llm_response,
+        LLM_EXTRACTION_CONSTANTS.START_MARKER,
         LLM_EXTRACTION_CONSTANTS.END_MARKER
     )
+
+
+# Backward compatibility aliases (deprecated - use extract_review_section instead)
+def extract_daily_progress_review(llm_response: str) -> str | None:
+    """Deprecated: Use extract_review_section instead"""
+    return extract_review_section(llm_response)
 
 
 def extract_pi_sync_review(llm_response: str) -> str | None:
-    """
-    Extract the "PI Sync Review" section from LLM response using markers
-    
-    Args:
-        llm_response: The full LLM response text
-    
-    Returns:
-        str: The extracted "PI Sync Review" section, or None if start marker not found,
-             empty string if end marker not found
-    """
-    return extract_content_between_markers(
-        llm_response, 
-        LLM_EXTRACTION_CONSTANTS.START_MARKER, 
-        LLM_EXTRACTION_CONSTANTS.END_MARKER
-    )
+    """Deprecated: Use extract_review_section instead"""
+    return extract_review_section(llm_response)
 
 
 def process_llm_response_and_save_ai_card(

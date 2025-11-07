@@ -6,13 +6,13 @@ from api_client import APIClient
 from llm_client import call_agent_llm_process
 from utils_processing import (
     extract_recommendations,
-    extract_pi_sync_review,
+    extract_review_section,
+    extract_text_and_json,
     fetch_pi_data_for_analysis,
     format_pi_analysis_input,
     get_prompt_with_error_check,
     process_llm_response_and_save_ai_card,
     save_recommendations_from_json,
-    extract_text_and_json,
 )
 
 
@@ -114,7 +114,7 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
             # Note: No "pi" field - team-ai-cards don't have pi field
         },
         card_type="Team",  # Use Team AI cards endpoint
-        extract_content_fn=extract_pi_sync_review,  # Use same extract function
+        extract_content_fn=extract_review_section,
     )
     
     # Extract recommendations_json from LLM response for recommendations saving

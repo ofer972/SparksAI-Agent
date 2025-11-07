@@ -43,8 +43,9 @@ from utils_llm_processing_and_extraction import (
     extract_content_between_markers,
     extract_json_sections,
     extract_text_and_json,
-    extract_daily_progress_review,
-    extract_pi_sync_review,
+    extract_review_section,
+    extract_daily_progress_review,  # Backward compatibility
+    extract_pi_sync_review,  # Backward compatibility
     process_llm_response_and_save_ai_card,
 )
 
@@ -77,7 +78,8 @@ __all__ = [
     "extract_content_between_markers",
     "extract_json_sections",
     "extract_text_and_json",
-    "extract_daily_progress_review",
-    "extract_pi_sync_review",
+    "extract_review_section",
+    "extract_daily_progress_review",  # Backward compatibility
+    "extract_pi_sync_review",  # Backward compatibility
     "process_llm_response_and_save_ai_card",
 ]

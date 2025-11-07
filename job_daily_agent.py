@@ -7,7 +7,7 @@ from llm_client import call_agent_llm_process
 from utils_processing import (
     extract_recommendations,
     extract_text_and_json,
-    extract_daily_progress_review,
+    extract_review_section,
     get_prompt_with_error_check,
     save_recommendations_from_json,
     get_team_sprint_burndown_for_analysis,
@@ -88,7 +88,7 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
             "source": "Daily Agent",
         },
         card_type="Team",
-        extract_content_fn=extract_daily_progress_review,
+        extract_content_fn=extract_review_section,
     )
     
     # Extract recommendations_json from LLM response for recommendations saving
