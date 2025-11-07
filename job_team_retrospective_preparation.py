@@ -7,12 +7,12 @@ from llm_client import call_agent_llm_process
 from utils_processing import (
     extract_recommendations,
     extract_text_and_json,
-    extract_daily_progress_review,
     get_prompt_with_error_check,
-    save_recommendations_from_json,
     get_team_sprint_burndown_for_analysis,
-    get_daily_transcript_for_analysis,
+    get_transcripts_for_analysis,
+    get_sprint_predictability_for_analysis,
     process_llm_response_and_save_ai_card,
+    save_recommendations_from_json,
 )
 
 
@@ -24,31 +24,51 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
         return False, "Missing team_name in job payload"
 
     # Get formatted data using helper functions
-    transcript_formatted = get_daily_transcript_for_analysis(client, team_name)
+    # Get latest 5 transcripts
+    transcripts_formatted = get_transcripts_for_analysis(
+        client=client,
+        transcript_type="Daily",
+        team_name=team_name,
+        limit=5,
+    )
+    
+    # Get sprint burndown
     burndown_formatted = get_team_sprint_burndown_for_analysis(client, team_name)
+    
+    # Get sprint predictability (last 3 months)
+    sprint_predictability_formatted = get_sprint_predictability_for_analysis(
+        client=client,
+        team_name=team_name,
+        months=3,
+    )
 
     # Fetch prompt with error checking
     prompt_text, prompt_error = get_prompt_with_error_check(
         client=client,
-        email_address="DailyAgent",
-        prompt_name="Daily Insights",
-        job_type="Daily Agent",
+        email_address="TeamRetrospectivePrepAgent",
+        prompt_name="Team Retrospective Preparation",
+        job_type="Team Retrospective Preparation",
         job_id=int(job_id) if job_id is not None else None,
     )
     
     if prompt_error:
         return False, prompt_error
 
-    # Build formatted input by concatenating formatted sections (same pattern as Sprint Goal)
-    parts = ["=== DAILY CONTEXT ==="]
+    # Build formatted input by concatenating formatted sections
+    parts = ["=== TEAM RETROSPECTIVE PREPARATION ==="]
     parts.append(f"Team: {team_name}")
     parts.append("")
     
-    # Add formatted transcript (includes "=== TRANSCRIPT DATA ===" header)
-    parts.append(transcript_formatted)
+    # Add formatted transcripts (includes "Begin transcript(s)" / "End transcript(s)" markers)
+    parts.append(transcripts_formatted)
+    parts.append("")
     
     # Add formatted burndown (includes "=== BURN DOWN DATA FOR THE ACTIVE SPRINT ===" header)
     parts.append(burndown_formatted)
+    parts.append("")
+    
+    # Add formatted sprint predictability (includes "=== Previous Sprints metrics and predictability ===" header)
+    parts.append(sprint_predictability_formatted)
     
     # Add prompt (already includes markers from get_prompt_with_error_check)
     if prompt_text:
@@ -62,7 +82,7 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     ok, llm_answer, _raw = call_agent_llm_process(
         client=client,
         prompt=formatted,
-        job_type="Daily Agent",
+        job_type="Team Retrospective Preparation",
         job_id=int(job_id) if job_id is not None else None,
         metadata={"team_name": team_name},
     )
@@ -82,13 +102,13 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
         team_name=team_name,
         job_id=int(job_id) if job_id is not None else None,
         card_config={
-            "card_name": "Daily Progress Review",
-            "card_type": "Daily Progress",
-            "priority": "Critical",
-            "source": "Daily Agent",
+            "card_name": "Team Retrospective Preparation",
+            "card_type": "Retrospective",
+            "priority": "High",
+            "source": "Team Retrospective Preparation",
         },
         card_type="Team",
-        extract_content_fn=extract_daily_progress_review,
+        extract_content_fn=extract_text_and_json,  # Use generic extraction
     )
     
     # Extract recommendations_json from LLM response for recommendations saving
@@ -98,58 +118,17 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     print("📋 EXTRACTING AND SAVING RECOMMENDATIONS")
     
     today = datetime.now(timezone.utc).date().isoformat()
-    
-    # First try to extract recommendations from JSON if available
-    recommendations_saved = save_recommendations_from_json(
-        client=client,
-        recommendations_json=recommendations_json,
-        team_name_or_pi=team_name,
-        today=today,
-        full_info_truncated=full_info_truncated,
-        max_count=2,
-        job_id=int(job_id) if job_id is not None else None,
-        source_ai_summary_id=card_id,
-    )
-    
-    # Fallback to text-based extraction if no JSON recommendations found
-    if recommendations_saved == 0:
-        print("⚠️ No recommendations from JSON found - falling back to text extraction")
-        recs = extract_recommendations(llm_answer, max_count=2)
-        for rec_text in recs:
-            rec_payload = {
-                "team_name": team_name,
-                "action_text": rec_text,
-                "date": today,
-                "priority": "High",
-                "status": "Proposed",
-                "full_information": full_info_truncated,
-                "source_job_id": int(job_id) if job_id is not None else None,
-                "source_ai_summary_id": card_id,
-            }
-            rsc, rresp = client.create_recommendation(rec_payload)
-            if rsc >= 300:
-                print(f"⚠️ Create recommendation failed: {rsc} {rresp}")
-            else:
-                recommendations_saved += 1
-                print(f"🧩 Recommendation: priority='High' status='Proposed' text='{rec_text[:120]}'")
-            
-            if recommendations_saved >= 2:
-                break
+    if recommendations_json:
+        save_recommendations_from_json(
+            client=client,
+            recommendations_json=recommendations_json,
+            team_name=team_name,
+            source="Team Retrospective Preparation",
+            date=today,
+        )
+        print("✅ Recommendations saved")
+    else:
+        print("ℹ️  No recommendations found in LLM response")
 
-    # Create detailed result text with full LLM response (like old system)
-    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-    result_text = f"""Daily Agent Analysis Completed
-
-Team: {team_name}
-Job ID: {job_id}
-Timestamp: {timestamp}
-
-Data Sent to LLM: {len(formatted)} characters
-LLM Response Length: {len(llm_answer)} characters
-
-=== AI ANALYSIS ===
-{llm_answer}
-"""
-    return True, result_text
-
+    return True, f"Team Retrospective Preparation completed successfully. Card ID: {card_id}"
 

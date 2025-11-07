@@ -9,6 +9,7 @@ JOB_TYPES = [
     "Sprint Goal",
     "PI Sync",
     "Team PI Insight",
+    "Team Retrospective Preparation",
 ]
 
 # Polling intervals (defaults match current project behavior)

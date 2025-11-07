@@ -54,6 +54,42 @@ class APIClient:
         return resp.status_code, self._safe_json(resp)
 
     # ---- PI Sync related endpoints ----
+    def get_transcripts(
+        self,
+        transcript_type: str | None = None,
+        team_name: str | None = None,
+        pi_name: str | None = None,
+        limit: int = 1,
+    ) -> Tuple[int, Any]:
+        """Get transcripts using unified endpoint.
+        
+        Args:
+            transcript_type: 'Daily' | 'PI Sync' | None (optional)
+            team_name: Team name (required if type='Daily')
+            pi_name: PI name (required if type='PI Sync')
+            limit: Number of transcripts to retrieve (default: 1, min: 1, max: 100)
+            
+        Returns:
+            Tuple of (status_code, response_data)
+        """
+        params: Dict[str, Any] = {}
+        if transcript_type:
+            params["type"] = transcript_type
+        if team_name:
+            params["team_name"] = team_name
+        if pi_name:
+            params["pi_name"] = pi_name
+        if limit:
+            params["limit"] = limit
+        
+        resp = requests.get(
+            self._url("/api/v1/transcripts/getLatest"),
+            params=params,
+            headers=self._headers(),
+            timeout=self.timeout_seconds,
+        )
+        return resp.status_code, self._safe_json(resp)
+
     def get_latest_pi_sync_transcript(self, pi_name: str) -> Tuple[int, Any]:
         resp = requests.get(
             self._url("/api/v1/transcripts/getLatestPISync"),
@@ -123,6 +159,32 @@ class APIClient:
             params["sprint_status"] = sprint_status
         resp = requests.get(
             self._url("/api/v1/team-metrics/get-sprints"),
+            params=params,
+            headers=self._headers(),
+            timeout=self.timeout_seconds,
+        )
+        return resp.status_code, self._safe_json(resp)
+
+    def get_sprint_predictability(
+        self,
+        team_name: str | None = None,
+        months: int = 3,
+    ) -> Tuple[int, Any]:
+        """Get sprint predictability data.
+        
+        Args:
+            team_name: Optional team name to filter by
+            months: Number of months to look back (default: 3, valid: 1, 2, 3, 4, 6, 9)
+            
+        Returns:
+            Tuple of (status_code, response_data)
+        """
+        params: Dict[str, Any] = {"months": months}
+        if team_name:
+            params["team_name"] = team_name
+        
+        resp = requests.get(
+            self._url("/api/v1/sprints/sprint-predictability"),
             params=params,
             headers=self._headers(),
             timeout=self.timeout_seconds,

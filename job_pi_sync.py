@@ -12,6 +12,7 @@ from utils_processing import (
     fetch_pi_data_for_analysis,
     format_pi_analysis_input,
     get_prompt_with_error_check,
+    get_transcripts_for_analysis,
     process_llm_response_and_save_ai_card,
     save_recommendations_from_json,
 )
@@ -41,12 +42,20 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     if not pi:
         return False, "Missing PI in job payload"
 
-    # Fetch data using shared function
-    transcript_obj, pi_status_obj, burndown_obj = fetch_pi_data_for_analysis(
+    # Fetch transcript using new unified function
+    transcript_formatted = get_transcripts_for_analysis(
+        client=client,
+        transcript_type="PI Sync",
+        pi_name=pi,
+        limit=1,
+    )
+    
+    # Fetch other data using shared function
+    _, pi_status_obj, burndown_obj = fetch_pi_data_for_analysis(
         client=client,
         pi=pi,
         team_name=None,  # PI Sync doesn't filter by team_name
-        include_transcript=True,
+        include_transcript=False,  # Already fetched above
     )
 
     # Fetch prompt with error checking
@@ -63,7 +72,7 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
 
     # Build formatted input and update input_sent
     formatted = format_pi_analysis_input(
-        transcript=transcript_obj,
+        transcript=transcript_formatted,  # Pass formatted string
         pi_status=pi_status_obj,
         burndown=burndown_obj,
         prompt=prompt_text,
