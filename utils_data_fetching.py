@@ -218,14 +218,18 @@ def get_transcripts_for_analysis(
     if not transcripts or not isinstance(transcripts, list):
         return "Begin transcript\nNo transcripts found\nEnd transcript"
     
+    # Log how many transcripts were found
+    transcript_count = len(transcripts)
+    print(f"✅ Found {transcript_count} transcript(s) for {transcript_type or 'all types'}")
+    
     # Determine singular vs plural
-    is_plural = len(transcripts) > 1
+    is_plural = transcript_count > 1
     begin_marker = "Begin transcripts" if is_plural else "Begin transcript"
     end_marker = "End transcripts" if is_plural else "End transcript"
     
     # Format each transcript
     parts = [begin_marker]
-    for transcript in transcripts:
+    for index, transcript in enumerate(transcripts, start=1):
         if not isinstance(transcript, dict):
             continue
         
@@ -233,7 +237,8 @@ def get_transcripts_for_analysis(
         transcript_date = transcript.get("transcript_date", "")
         raw_text = transcript.get("raw_text", "")
         
-        # Add date and content
+        # Add transcript number, date and content
+        parts.append(f"Transcript {index}")
         if transcript_date:
             parts.append(f"transcript_date: {transcript_date}")
         if raw_text:

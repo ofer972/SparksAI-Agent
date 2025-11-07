@@ -37,14 +37,24 @@ def call_agent_llm_process(
     try:
         status, data = client.post_agent_llm_process(body)
     except Exception as e:
-        return False, "", {"error": str(e), "exception_type": type(e).__name__}
+        error_payload = {"error": str(e), "exception_type": type(e).__name__}
+        print(f"❌ LLM Exception: {str(e)} ({type(e).__name__})")
+        print(f"❌ Job Type: {job_type}, Job ID: {job_id}")
+        return False, "", error_payload
     
     if status == 200 and isinstance(data, dict) and data.get("success") and isinstance(data.get("data"), dict):
         llm_resp = data["data"].get("response")
         if isinstance(llm_resp, str) and llm_resp.strip():
             return True, llm_resp, data
     
+    # Error case: log the error details
+    error_payload = data if isinstance(data, dict) else {}
+    error_msg = error_payload.get("message") or error_payload.get("error") or f"HTTP {status}" if status != 200 else "Invalid response format"
+    print(f"❌ LLM Error: {error_msg}")
+    print(f"❌ Job Type: {job_type}, Job ID: {job_id}, Status: {status}")
+    print(f"❌ Raw response: {error_payload}")
+    
     # Strict behavior: no fallback
-    return False, "", data if isinstance(data, dict) else {}
+    return False, "", error_payload
 
 
