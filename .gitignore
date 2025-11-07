@@ -80,3 +80,4 @@ Thumbs.db
 
 # Project-specific ignores
 # Add any local secrets/config files below
+combined_agent.txt
