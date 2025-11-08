@@ -220,7 +220,7 @@ def get_transcripts_for_analysis(
     
     # Log how many transcripts were found
     transcript_count = len(transcripts)
-    print(f"✅ Found {transcript_count} transcript(s) for {transcript_type or 'all types'}")
+    print(f"✅ Found {transcript_count} transcript(s)")
     
     # Determine singular vs plural
     is_plural = transcript_count > 1

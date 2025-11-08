@@ -46,9 +46,9 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     # Fetch prompt with error checking
     prompt_text, prompt_error = get_prompt_with_error_check(
         client=client,
-        email_address="TeamRetrospectivePrepAgent",
-        prompt_name="Team Retrospective Preparation",
-        job_type="Team Retrospective Preparation",
+        email_address="TeamRetroTopicsAgent",
+        prompt_name="Team Retro Topics",
+        job_type="Team Retro Topics",
         job_id=int(job_id) if job_id is not None else None,
     )
     
@@ -56,7 +56,7 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
         return False, prompt_error
 
     # Build formatted input by concatenating formatted sections
-    parts = ["=== TEAM RETROSPECTIVE PREPARATION ==="]
+    parts = ["=== TEAM RETRO TOPICS ==="]
     parts.append(f"Team: {team_name}")
     parts.append("")
     
@@ -83,7 +83,7 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     ok, llm_answer, _raw = call_agent_llm_process(
         client=client,
         prompt=formatted,
-        job_type="Team Retrospective Preparation",
+        job_type="Team Retro Topics",
         job_id=int(job_id) if job_id is not None else None,
         metadata={"team_name": team_name},
     )
@@ -103,10 +103,10 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
         team_name=team_name,
         job_id=int(job_id) if job_id is not None else None,
         card_config={
-            "card_name": "Team Retrospective Preparation",
+            "card_name": "Team Retro Topics",
             "card_type": "Retrospective",
             "priority": "High",
-            "source": "Team Retrospective Preparation",
+            "source": "Team Retro Topics",
         },
         card_type="Team",
         extract_content_fn=extract_review_section,
@@ -136,7 +136,7 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
 
     # Create detailed result text with full LLM response (like other jobs)
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-    result_text = f"""Team Retrospective Preparation Analysis Completed
+    result_text = f"""Team Retro Topics Analysis Completed
 
 Team: {team_name}
 Job ID: {job_id}
