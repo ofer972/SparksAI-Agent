@@ -104,7 +104,7 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
         job_id=int(job_id) if job_id is not None else None,
         card_config={
             "card_name": "Team Retro Topics",
-            "card_type": "Retrospective",
+            "card_type": "Team Retro Topics",
             "priority": "High",
             "source": "Team Retro Topics",
         },
