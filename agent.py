@@ -58,14 +58,14 @@ def run_agent() -> None:
     while True:
         cycle_count += 1
         try:
-            # Health check before claiming next job
-            health_start_time = time.time()
-            health_status, _ = wait_for_backend(
-                lambda: client.check_health(),
-                operation_name="health check",
-            )
-            health_elapsed_time = time.time() - health_start_time
-            print(f"🏥 Health check → {health_status} (round trip: {health_elapsed_time*1000:.1f}ms)")
+            # Health check before claiming next job (commented out - may need to use)
+            # health_start_time = time.time()
+            # health_status, _ = wait_for_backend(
+            #     lambda: client.check_health(),
+            #     operation_name="health check",
+            # )
+            # health_elapsed_time = time.time() - health_start_time
+            # print(f"🏥 Health check → {health_status} (round trip: {health_elapsed_time*1000:.1f}ms)")
             
             # Time the claim_next_pending_job call
             start_time = time.time()
