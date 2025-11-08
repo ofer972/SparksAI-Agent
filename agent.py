@@ -53,28 +53,44 @@ def run_agent() -> None:
     
     cycle_count = 0
     no_jobs_count = 0  # Counter for consecutive "no jobs" messages
+    no_jobs_timings = []  # Track timings for "no jobs" cases
 
     while True:
         cycle_count += 1
         try:
+            # Time the claim_next_pending_job call
+            start_time = time.time()
             status_code, data = wait_for_backend(
-                lambda: client.get_next_pending_job(),
-                operation_name="get next pending job",
+                lambda: client.claim_next_pending_job(),
+                operation_name="claim next pending job",
             )
+            elapsed_time = time.time() - start_time
+            
             if status_code == 204 or (status_code == 200 and not data):
                 no_jobs_count += 1
-                # Only print every 10th "no jobs" message
+                no_jobs_timings.append(elapsed_time)
+                # Only print every 10th "no jobs" message with average timing
                 if no_jobs_count % 10 == 0:
-                    print(f"⏳ No jobs (checked 10 times, {datetime.now(timezone.utc).strftime('%H:%M:%S')})")
+                    if len(no_jobs_timings) > 0:
+                        avg_time = sum(no_jobs_timings) / len(no_jobs_timings)
+                        total_time = sum(no_jobs_timings)
+                        print(f"⏳ No jobs (checked 10 times, avg response time: {avg_time*1000:.1f}ms, total: {total_time*1000:.1f}ms, count: {len(no_jobs_timings)}, {datetime.now(timezone.utc).strftime('%H:%M:%S')})")
+                    else:
+                        print(f"⏳ No jobs (checked 10 times, {datetime.now(timezone.utc).strftime('%H:%M:%S')})")
+                    no_jobs_timings = []  # Reset after logging
                 time.sleep(config.POLLING_INTERVAL_SECONDS)
                 continue
             
             # Reset counter when job is found
             no_jobs_count = 0
+            no_jobs_timings = []  # Reset timings when job is found
             if status_code != 200:
-                print(f"⚠️ Failed to get next job: {status_code} {data}")
+                print(f"⚠️ Failed to claim next job: {status_code} {data} (response time: {elapsed_time*1000:.1f}ms)")
                 time.sleep(config.POLLING_INTERVAL_SECONDS)
                 continue
+
+            # Job found successfully - print message with timing
+            print(f"✅ Job found (response time: {elapsed_time*1000:.1f}ms)")
 
             # Expect a single job object; backend returns { data: { job: {...} } }
             container = data.get("data") if isinstance(data, dict) else data
@@ -84,30 +100,20 @@ def run_agent() -> None:
                 else container
             )
             if not isinstance(job, dict):
-                print(f"⚠️ Unexpected next-pending response format: {data}")
+                print(f"⚠️ Unexpected next-pending response format: {data} (response time: {elapsed_time*1000:.1f}ms)")
                 time.sleep(config.POLLING_INTERVAL_SECONDS)
                 continue
 
             job_id = _extract_job_id(job)
             if job_id is None:
-                print(f"⚠️ Skipping job with missing/invalid id: {job}")
+                print(f"⚠️ Skipping job with missing/invalid id: {job} (response time: {elapsed_time*1000:.1f}ms)")
                 time.sleep(config.POLLING_INTERVAL_AFTER_JOB_SECONDS)
                 continue
             print(
                 f"🎯 job_id={job_id} job_type='{job.get('job_type')}' team_name='{job.get('team_name')}' pi='{job.get('pi')}'"
             )
 
-            claim_body = {
-                "status": "claimed",
-                "claimed_by": str(job.get("job_type", "Unknown")),
-                "claimed_at": _now_iso(),
-            }
-            sc, resp = client.patch_agent_job(job_id, claim_body)
-            if sc != 200:
-                print(f"⚠️ Claim failed for job {job_id}: {sc} {resp}")
-                time.sleep(config.POLLING_INTERVAL_AFTER_JOB_SECONDS)
-                continue
-
+            # Job is already claimed by backend - proceed directly to processing
             input_text = (
                 f"SparksAI-Agent collected basic job context at {datetime.now(timezone.utc).isoformat()}"
             )

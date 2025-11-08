@@ -36,10 +36,11 @@ class APIClient:
         )
         return resp.status_code, self._safe_json(resp)
 
-    def get_next_pending_job(self) -> Tuple[int, Any]:
-        resp = requests.get(
-            self._url("/api/v1/agent-jobs/next-pending"),
+    def claim_next_pending_job(self) -> Tuple[int, Any]:
+        resp = requests.post(
+            self._url("/api/v1/agent-jobs/claim-next"),
             headers=self._headers(),
+            json={"claimed_by": "SparksAI-Agent"},
             timeout=self.timeout_seconds,
         )
         return resp.status_code, self._safe_json(resp)
