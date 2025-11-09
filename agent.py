@@ -13,7 +13,6 @@ from job_router import route_and_process
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
-
 def _select_pending_supported(jobs: List[Dict[str, Any]]) -> Dict[str, Any] | None:
     for job in jobs or []:
         status = str(job.get("status", "")).lower()
@@ -37,7 +36,7 @@ def run_agent() -> None:
     print("=" * 70)
     print("🚀 Starting SparksAI-Agent")
     print(f"   Backend: {config.BASE_URL}")
-    print(f"   Job Types: {', '.join(config.JOB_TYPES)}")
+    print(f"   Job-Types: {', '.join(config.JOB_TYPES)}")
     print(f"   Polling Interval: {config.POLLING_INTERVAL_SECONDS} seconds")
     print("=" * 70)
 
