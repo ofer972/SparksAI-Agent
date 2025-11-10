@@ -5,7 +5,7 @@ BASE_URL: str = os.getenv("BACKEND_API_URL", "http://localhost:8000")
 
 # Job processing configuration (mirror existing logic)
 JOB_TYPES = [
-    "Daily Agent",
+    "Daily Progress",
     "Sprint Goal",
     "PI Sync",
     "Team PI Insight",
