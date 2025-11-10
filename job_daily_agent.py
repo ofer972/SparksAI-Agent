@@ -12,6 +12,7 @@ from utils_processing import (
     save_recommendations_from_json,
     get_team_sprint_burndown_for_analysis,
     get_daily_transcript_for_analysis,
+    get_active_sprint_summary_by_team_for_analysis,
     process_llm_response_and_save_ai_card,
 )
 
@@ -24,6 +25,8 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
         return False, "Missing team_name in job payload"
 
     # Get formatted data using helper functions
+    # Get active sprint summary first (includes sprint goal and sprint status)
+    sprint_summary_formatted, _sprint_id, _sprint_goal = get_active_sprint_summary_by_team_for_analysis(client, team_name)
     transcript_formatted = get_daily_transcript_for_analysis(client, team_name)
     burndown_formatted = get_team_sprint_burndown_for_analysis(client, team_name)
 
@@ -43,6 +46,9 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     parts = ["=== DAILY CONTEXT ==="]
     parts.append(f"Team: {team_name}")
     parts.append("")
+    
+    # Add active sprint summary at the beginning (includes sprint goal and sprint status)
+    parts.append(sprint_summary_formatted)
     
     # Add formatted transcript (includes "=== TRANSCRIPT DATA ===" header)
     parts.append(transcript_formatted)
