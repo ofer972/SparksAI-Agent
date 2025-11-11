@@ -19,8 +19,8 @@ def _int_env(name: str, default: int) -> int:
     except ValueError:
         return default
 
-POLLING_INTERVAL_SECONDS: int = _int_env("POLLING_INTERVAL", 10)
-POLLING_INTERVAL_AFTER_JOB_SECONDS: int = _int_env("POLLING_INTERVAL_AFTER_JOB", 1)
+POLLING_INTERVAL_SECONDS: int = _int_env("POLLING_INTERVAL", 20)
+POLLING_INTERVAL_AFTER_JOB_SECONDS: int = _int_env("POLLING_INTERVAL_AFTER_JOB", 2)
 
 # Single instance for now; keeping flag in case we expand later
 PROCESS_JOBS_CONTINUOUSLY: bool = True
