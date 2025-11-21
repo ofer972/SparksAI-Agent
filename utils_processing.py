@@ -33,6 +33,7 @@ from utils_data_fetching import (
     get_sprint_predictability_for_analysis,
     get_pi_status_for_today_for_analysis,
     get_pi_burndown_for_analysis,
+    get_pi_dependencies_for_analysis,
 )
 
 from utils_llm_processing_and_extraction import (
@@ -70,6 +71,7 @@ __all__ = [
     "get_sprint_predictability_for_analysis",
     "get_pi_status_for_today_for_analysis",
     "get_pi_burndown_for_analysis",
+    "get_pi_dependencies_for_analysis",
     # LLM processing and extraction
     "clean_recommendation_text",
     "extract_recommendations",

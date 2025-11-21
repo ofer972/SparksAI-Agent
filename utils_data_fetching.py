@@ -563,3 +563,54 @@ def get_pi_burndown_for_analysis(
     
     return "=== PI Burndown Snapshot ===\nNo burndown data available\n"
 
+
+def get_pi_dependencies_for_analysis(
+    client: APIClient,
+    pi: str,
+) -> Tuple[str, str]:
+    """
+    Fetch inbound and outbound dependencies and format as tables for LLM.
+    
+    Args:
+        client: APIClient instance
+        pi: PI name/identifier (e.g., "Q42025")
+        
+    Returns:
+        Tuple of (inbound_formatted, outbound_formatted) as formatted strings
+        Each string includes a header and formatted table
+    """
+    from utils_formatting import format_table
+    
+    # Fetch inbound dependencies
+    status_code, inbound_response = client.get_epic_inbound_dependency_load_by_quarter(pi)
+    if status_code != 200:
+        inbound_formatted = f"=== INBOUND DEPENDENCIES ===\n⚠️ Failed to fetch: HTTP {status_code}\n"
+    else:
+        # Extract data array from response
+        if isinstance(inbound_response, dict) and inbound_response.get("success"):
+            data = inbound_response.get("data", [])
+            if data and isinstance(data, list):
+                table = format_table(data, max_width=50)
+                inbound_formatted = f"=== INBOUND DEPENDENCIES ===\n{table}\n"
+            else:
+                inbound_formatted = "=== INBOUND DEPENDENCIES ===\nNo inbound dependency data found\n"
+        else:
+            inbound_formatted = "=== INBOUND DEPENDENCIES ===\n⚠️ Invalid response format\n"
+    
+    # Fetch outbound dependencies
+    status_code, outbound_response = client.get_epic_outbound_dependency_metrics_by_quarter(pi)
+    if status_code != 200:
+        outbound_formatted = f"=== OUTBOUND DEPENDENCIES ===\n⚠️ Failed to fetch: HTTP {status_code}\n"
+    else:
+        # Extract data array from response
+        if isinstance(outbound_response, dict) and outbound_response.get("success"):
+            data = outbound_response.get("data", [])
+            if data and isinstance(data, list):
+                table = format_table(data, max_width=50)
+                outbound_formatted = f"=== OUTBOUND DEPENDENCIES ===\n{table}\n"
+            else:
+                outbound_formatted = "=== OUTBOUND DEPENDENCIES ===\nNo outbound dependency data found\n"
+        else:
+            outbound_formatted = "=== OUTBOUND DEPENDENCIES ===\n⚠️ Invalid response format\n"
+    
+    return inbound_formatted, outbound_formatted

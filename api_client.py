@@ -275,6 +275,42 @@ class APIClient:
         )
         return resp.status_code, self._safe_json(resp)
 
+    def get_epic_inbound_dependency_load_by_quarter(self, pi: str) -> Tuple[int, Any]:
+        """Get inbound dependency load by quarter for a PI.
+        
+        Args:
+            pi: PI name/identifier (e.g., "Q42025")
+            
+        Returns:
+            Tuple of (status_code, response_data)
+            Response structure: {"success": true, "data": [...]}
+        """
+        resp = requests.get(
+            self._url("/api/v1/issues/epic-inbound-dependency-load-by-quarter"),
+            params={"pi": pi},
+            headers=self._headers(),
+            timeout=self.timeout_seconds,
+        )
+        return resp.status_code, self._safe_json(resp)
+
+    def get_epic_outbound_dependency_metrics_by_quarter(self, pi: str) -> Tuple[int, Any]:
+        """Get outbound dependency metrics by quarter for a PI.
+        
+        Args:
+            pi: PI name/identifier (e.g., "Q42025")
+            
+        Returns:
+            Tuple of (status_code, response_data)
+            Response structure: {"success": true, "data": [...]}
+        """
+        resp = requests.get(
+            self._url("/api/v1/issues/epic-outbound-dependency-metrics-by-quarter"),
+            params={"pi": pi},
+            headers=self._headers(),
+            timeout=self.timeout_seconds,
+        )
+        return resp.status_code, self._safe_json(resp)
+
     def get_prompt(self, email_address: str, prompt_name: str) -> Tuple[int, Any]:
         resp = requests.get(
             self._url(f"/api/v1/prompts/{email_address}/{prompt_name}"),
