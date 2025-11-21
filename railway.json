@@ -1,0 +1,14 @@
+{
+  "variables": {
+    "POLLING_INTERVAL": {
+      "required": false
+    },
+    "POLLING_INTERVAL_AFTER_JOB": {
+      "required": false
+    },
+    "NETWORK_BACKOFF_CAP": {
+      "required": false
+    }
+  }
+}
+
