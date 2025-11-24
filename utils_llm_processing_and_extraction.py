@@ -409,8 +409,16 @@ def process_llm_response_and_save_ai_card(
 
     # Create card payload
     today = datetime.now(timezone.utc).date().isoformat()
+    
+    # Normalize team_name: None -> "" for PI cards, keep as-is for Team cards
+    # This ensures consistency with UNIQUE constraint in database
+    normalized_team_name = team_name if team_name is not None else ""
+    if card_type == "PI":
+        # PI cards should use "" instead of None for consistency with UNIQUE constraint
+        normalized_team_name = normalized_team_name or ""
+    
     card_payload = {
-        "team_name": team_name,
+        "team_name": normalized_team_name,
         "card_name": card_config.get("card_name"),
         "card_type": card_config.get("card_type"),
         "description": description[:2000],  # Truncate description if too long
@@ -440,21 +448,48 @@ def process_llm_response_and_save_ai_card(
                 for c in items:
                     try:
                         same_date = str(c.get("date", ""))[:10] == today
-                        if same_date and c.get("team_name") == card_payload["team_name"] and c.get("pi") == card_payload.get("pi") and c.get("card_name") == card_payload["card_name"]:
+                        # Normalize team_name for comparison (handles None vs "" mismatch)
+                        existing_team_name = c.get("team_name") or ""
+                        payload_team_name = card_payload.get("team_name") or ""
+                        
+                        if same_date and existing_team_name == payload_team_name and c.get("pi") == card_payload.get("pi") and c.get("card_name") == card_payload["card_name"]:
+                            # Extract card ID with validation
+                            card_id_raw = c.get("id")
+                            if card_id_raw is None:
+                                print(f"⚠️ WARNING: Existing card found but id is None, skipping")
+                                continue
+                            try:
+                                card_id = int(card_id_raw)
+                            except (ValueError, TypeError) as e:
+                                print(f"⚠️ WARNING: Cannot convert card id to int: {card_id_raw}, error: {e}")
+                                continue
+                            
                             # Patch existing
-                            card_id = int(c.get("id"))
                             psc, presp = client.patch_pi_ai_card(card_id, card_payload)
-                            if psc >= 300:
+                            if psc < 300:
+                                # Patch succeeded, card_id is already set
+                                upsert_done = True
+                                break
+                            else:
                                 print(f"⚠️ Patch pi-ai-card failed: {psc} {presp}")
-                            upsert_done = psc < 300
-                            break
-                    except Exception:
+                                # Don't set upsert_done, will try to create new
+                    except Exception as e:
+                        # Log exception instead of silently swallowing
+                        print(f"⚠️ WARNING: Exception in PI card upsert loop: {e}")
                         continue
         if not upsert_done:
             csc, cresp = client.create_pi_ai_card(card_payload)
             if csc < 300 and isinstance(cresp, dict):
                 # Extract from response.data.card.id structure
                 card_id = cresp.get("data", {}).get("card", {}).get("id")
+                if card_id is None:
+                    # Log the actual response structure for debugging
+                    print(f"⚠️ WARNING: Card ID not found in response structure")
+                    print(f"   Response keys: {list(cresp.keys()) if isinstance(cresp, dict) else 'not a dict'}")
+                    if isinstance(cresp, dict) and "data" in cresp:
+                        print(f"   Data keys: {list(cresp['data'].keys()) if isinstance(cresp['data'], dict) else 'not a dict'}")
+                        if isinstance(cresp['data'], dict) and "card" in cresp['data']:
+                            print(f"   Card keys: {list(cresp['data']['card'].keys()) if isinstance(cresp['data']['card'], dict) else 'not a dict'}")
             elif csc >= 300:
                 print(f"⚠️ Create pi-ai-card failed: {csc} {cresp}")
     elif card_type == "Team":
@@ -465,21 +500,48 @@ def process_llm_response_and_save_ai_card(
                 for c in items:
                     try:
                         same_date = str(c.get("date", ""))[:10] == today
-                        if same_date and c.get("team_name") == card_payload["team_name"] and c.get("card_name") == card_payload["card_name"]:
+                        # Normalize team_name for comparison (handles None vs "" mismatch)
+                        existing_team_name = c.get("team_name") or ""
+                        payload_team_name = card_payload.get("team_name") or ""
+                        
+                        if same_date and existing_team_name == payload_team_name and c.get("card_name") == card_payload["card_name"]:
+                            # Extract card ID with validation
+                            card_id_raw = c.get("id")
+                            if card_id_raw is None:
+                                print(f"⚠️ WARNING: Existing card found but id is None, skipping")
+                                continue
+                            try:
+                                card_id = int(card_id_raw)
+                            except (ValueError, TypeError) as e:
+                                print(f"⚠️ WARNING: Cannot convert card id to int: {card_id_raw}, error: {e}")
+                                continue
+                            
                             # Patch existing
-                            card_id = int(c.get("id"))
                             psc, presp = client.patch_team_ai_card(card_id, card_payload)
-                            if psc >= 300:
+                            if psc < 300:
+                                # Patch succeeded, card_id is already set
+                                upsert_done = True
+                                break
+                            else:
                                 print(f"⚠️ Patch team-ai-card failed: {psc} {presp}")
-                            upsert_done = psc < 300
-                            break
-                    except Exception:
+                                # Don't set upsert_done, will try to create new
+                    except Exception as e:
+                        # Log exception instead of silently swallowing
+                        print(f"⚠️ WARNING: Exception in Team card upsert loop: {e}")
                         continue
         if not upsert_done:
             csc, cresp = client.create_team_ai_card(card_payload)
             if csc < 300 and isinstance(cresp, dict):
                 # Extract from response.data.card.id structure
                 card_id = cresp.get("data", {}).get("card", {}).get("id")
+                if card_id is None:
+                    # Log the actual response structure for debugging
+                    print(f"⚠️ WARNING: Card ID not found in response structure")
+                    print(f"   Response keys: {list(cresp.keys()) if isinstance(cresp, dict) else 'not a dict'}")
+                    if isinstance(cresp, dict) and "data" in cresp:
+                        print(f"   Data keys: {list(cresp['data'].keys()) if isinstance(cresp['data'], dict) else 'not a dict'}")
+                        if isinstance(cresp['data'], dict) and "card" in cresp['data']:
+                            print(f"   Card keys: {list(cresp['data']['card'].keys()) if isinstance(cresp['data']['card'], dict) else 'not a dict'}")
             elif csc >= 300:
                 print(f"⚠️ Create team-ai-card failed: {csc} {cresp}")
     
