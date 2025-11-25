@@ -7,6 +7,7 @@ import job_pi_sync
 import job_team_pi_insight
 import job_team_retro_topics
 import job_pi_dependencies
+import job_pi_planning_gaps
 
 
 def route_and_process(job: Dict[str, Any]) -> Tuple[bool, str]:
@@ -26,6 +27,8 @@ def route_and_process(job: Dict[str, Any]) -> Tuple[bool, str]:
         return job_team_retro_topics.process(job)
     if job_type == "PI Dependencies":
         return job_pi_dependencies.process(job)
+    if job_type == "PI Planning Gaps":
+        return job_pi_planning_gaps.process(job)
     return False, f"Unknown job type: {job_type}"
 
 

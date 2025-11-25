@@ -614,3 +614,26 @@ def get_pi_dependencies_for_analysis(
             outbound_formatted = "=== OUTBOUND DEPENDENCIES ===\n⚠️ Invalid response format\n"
     
     return inbound_formatted, outbound_formatted
+
+
+def get_pi_planning_gaps_for_analysis(
+    client: APIClient,
+    pi: str,
+) -> Tuple[str, str]:
+    """
+    Fetch PI planning gaps data (using dependency endpoints for now).
+    Follows same pattern as get_pi_dependencies_for_analysis.
+    
+    Args:
+        client: APIClient instance
+        pi: PI name/identifier (e.g., "Q42025")
+        
+    Returns:
+        Tuple of (inbound_formatted, outbound_formatted) as formatted strings
+        Each string includes a header and formatted table
+        Note: Currently uses dependency endpoints; can be updated when specific planning gaps endpoint is available
+    """
+    # For now, use the same dependency endpoints as PI Dependencies
+    # This allows analysis of gaps in dependencies/planning
+    # TODO: Replace with specific planning gaps endpoint when available
+    return get_pi_dependencies_for_analysis(client, pi)
