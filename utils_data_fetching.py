@@ -652,8 +652,28 @@ def get_epics_by_pi_for_analysis(
         if isinstance(data_obj, dict):
             epics = data_obj.get("epics", [])
             if epics and isinstance(epics, list):
+                # Format team_progress_breakdown array as readable string
+                formatted_epics = []
+                for epic in epics:
+                    formatted_epic = epic.copy()
+                    # Format team_progress_breakdown array
+                    team_breakdown = epic.get("team_progress_breakdown", [])
+                    if isinstance(team_breakdown, list) and team_breakdown:
+                        # Format as: "Team1: 1/2, Team2: 0/1"
+                        breakdown_strs = []
+                        for team_data in team_breakdown:
+                            if isinstance(team_data, dict):
+                                team_name = team_data.get("team_name", "")
+                                done = team_data.get("done", 0)
+                                total = team_data.get("total", 0)
+                                breakdown_strs.append(f"{team_name}: {done}/{total}")
+                        formatted_epic["team_progress_breakdown"] = ", ".join(breakdown_strs) if breakdown_strs else "[]"
+                    elif not team_breakdown:
+                        formatted_epic["team_progress_breakdown"] = "[]"
+                    formatted_epics.append(formatted_epic)
+                
                 # Format as table using generic format_table function
-                table = format_table(epics, max_width=50)
+                table = format_table(formatted_epics, max_width=50)
                 if table:
                     count = data_obj.get("count", len(epics))
                     return f"=== EPICS BY PI ===\n(Total: {count} epics)\n{table}\n"
