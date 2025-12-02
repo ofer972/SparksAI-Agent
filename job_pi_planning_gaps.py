@@ -10,7 +10,9 @@ from utils_processing import (
     extract_review_section,
     extract_text_and_json,
     fetch_pi_data_for_analysis,
-    get_pi_planning_gaps_for_analysis,
+    get_average_sprint_velocity_per_team_for_analysis,
+    get_epics_by_pi_for_analysis,
+    get_pi_status_for_today_by_team_for_analysis,
     get_prompt_with_error_check,
     process_llm_response_and_save_ai_card,
     save_recommendations_from_json,
@@ -100,8 +102,21 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     # Get current date
     current_date = datetime.now(timezone.utc).date().isoformat()
 
-    # Fetch inbound and outbound dependencies (for planning gaps analysis)
-    inbound_formatted, outbound_formatted = get_pi_planning_gaps_for_analysis(
+    # Fetch PI status by team and format as table
+    pi_status_by_team_formatted = get_pi_status_for_today_by_team_for_analysis(
+        client=client,
+        pi=pi,
+    )
+
+    # Fetch average sprint velocity per team and format as table
+    velocity_formatted = get_average_sprint_velocity_per_team_for_analysis(
+        client=client,
+        pi=pi,
+        num_sprints=5,  # Default: last 5 sprints
+    )
+
+    # Fetch epics by PI and format as table
+    epics_formatted = get_epics_by_pi_for_analysis(
         client=client,
         pi=pi,
     )
@@ -128,12 +143,16 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     parts.append(f"Current Date: {current_date}")
     parts.append("")
     
-    # Add inbound dependencies
-    parts.append(inbound_formatted)
+    # Add PI status by team (formatted as markdown table)
+    parts.append(pi_status_by_team_formatted)
     parts.append("")
     
-    # Add outbound dependencies
-    parts.append(outbound_formatted)
+    # Add average sprint velocity by team (formatted as markdown table)
+    parts.append(velocity_formatted)
+    parts.append("")
+    
+    # Add epics by PI (formatted as markdown table)
+    parts.append(epics_formatted)
     parts.append("")
     
     # Add prompt (already includes markers from get_prompt_with_error_check)

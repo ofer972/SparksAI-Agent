@@ -533,6 +533,140 @@ def get_pi_status_for_today_for_analysis(
     return "=== PI status for current date ===\nNo PI status data available\n"
 
 
+def get_pi_status_for_today_by_team_for_analysis(
+    client: APIClient,
+    pi: str,
+) -> str:
+    """
+    Fetch PI status for today by team and format as markdown table for LLM.
+    
+    Args:
+        client: APIClient instance
+        pi: PI name/identifier
+        
+    Returns:
+        Formatted string with PI status by team as markdown table, including header.
+        Returns error message if fetch fails or data is empty.
+    """
+    from utils_formatting import format_table
+    
+    status_code, response = client.get_pi_status_for_today_by_team(pi)
+    
+    if status_code != 200:
+        return f"=== PI STATUS BY TEAM ===\n⚠️ Failed to fetch: HTTP {status_code}\n"
+    
+    # Extract data array from response structure
+    if isinstance(response, dict) and response.get("success"):
+        data_obj = response.get("data", {})
+        if isinstance(data_obj, dict):
+            # Extract the nested "data" array
+            team_status_list = data_obj.get("data", [])
+            if team_status_list and isinstance(team_status_list, list):
+                # Format as table using generic format_table function
+                table = format_table(team_status_list, max_width=50)
+                if table:
+                    return f"=== PI STATUS BY TEAM ===\n{table}\n"
+                else:
+                    return "=== PI STATUS BY TEAM ===\nNo team status data available\n"
+            else:
+                return "=== PI STATUS BY TEAM ===\nNo team status data found\n"
+        else:
+            return "=== PI STATUS BY TEAM ===\n⚠️ Invalid response format\n"
+    else:
+        return "=== PI STATUS BY TEAM ===\n⚠️ Invalid response format\n"
+
+
+def get_average_sprint_velocity_per_team_for_analysis(
+    client: APIClient,
+    pi: str,
+    num_sprints: int = 5,
+) -> str:
+    """
+    Fetch average sprint velocity per team and format as markdown table for LLM.
+    
+    Args:
+        client: APIClient instance
+        pi: PI name/identifier (if provided, uses teams participating in the PI)
+        num_sprints: Number of sprints to average (default: 5, max: 20)
+        
+    Returns:
+        Formatted string with average sprint velocity by team as markdown table, including header.
+        Returns error message if fetch fails or data is empty.
+    """
+    from utils_formatting import format_table
+    
+    status_code, response = client.get_average_sprint_velocity_per_team(
+        pi=pi,
+        num_sprints=num_sprints,
+    )
+    
+    if status_code != 200:
+        return f"=== AVERAGE SPRINT VELOCITY BY TEAM ===\n⚠️ Failed to fetch: HTTP {status_code}\n"
+    
+    # Extract velocity_data array from response structure
+    if isinstance(response, dict) and response.get("success"):
+        data_obj = response.get("data", {})
+        if isinstance(data_obj, dict):
+            velocity_data = data_obj.get("velocity_data", [])
+            if velocity_data and isinstance(velocity_data, list):
+                # Format as table using generic format_table function
+                table = format_table(velocity_data, max_width=50)
+                if table:
+                    num_sprints_used = data_obj.get("num_sprints", num_sprints)
+                    return f"=== AVERAGE SPRINT VELOCITY BY TEAM ===\n(Last {num_sprints_used} sprints)\n{table}\n"
+                else:
+                    return "=== AVERAGE SPRINT VELOCITY BY TEAM ===\nNo velocity data available\n"
+            else:
+                return "=== AVERAGE SPRINT VELOCITY BY TEAM ===\nNo velocity data found\n"
+        else:
+            return "=== AVERAGE SPRINT VELOCITY BY TEAM ===\n⚠️ Invalid response format\n"
+    else:
+        return "=== AVERAGE SPRINT VELOCITY BY TEAM ===\n⚠️ Invalid response format\n"
+
+
+def get_epics_by_pi_for_analysis(
+    client: APIClient,
+    pi: str,
+) -> str:
+    """
+    Fetch epics by PI and format as markdown table for LLM.
+    
+    Args:
+        client: APIClient instance
+        pi: PI name/identifier
+        
+    Returns:
+        Formatted string with epics data as markdown table, including header.
+        Returns error message if fetch fails or data is empty.
+    """
+    from utils_formatting import format_table
+    
+    status_code, response = client.get_epics_by_pi(pi)
+    
+    if status_code != 200:
+        return f"=== EPICS BY PI ===\n⚠️ Failed to fetch: HTTP {status_code}\n"
+    
+    # Extract epics array from response structure
+    if isinstance(response, dict) and response.get("success"):
+        data_obj = response.get("data", {})
+        if isinstance(data_obj, dict):
+            epics = data_obj.get("epics", [])
+            if epics and isinstance(epics, list):
+                # Format as table using generic format_table function
+                table = format_table(epics, max_width=50)
+                if table:
+                    count = data_obj.get("count", len(epics))
+                    return f"=== EPICS BY PI ===\n(Total: {count} epics)\n{table}\n"
+                else:
+                    return "=== EPICS BY PI ===\nNo epic data available\n"
+            else:
+                return "=== EPICS BY PI ===\nNo epics found\n"
+        else:
+            return "=== EPICS BY PI ===\n⚠️ Invalid response format\n"
+    else:
+        return "=== EPICS BY PI ===\n⚠️ Invalid response format\n"
+
+
 def get_pi_burndown_for_analysis(
     client: APIClient,
     pi: str,

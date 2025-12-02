@@ -142,6 +142,81 @@ class APIClient:
         )
         return resp.status_code, self._safe_json(resp)
 
+    def get_pi_status_for_today_by_team(self, pi: str) -> Tuple[int, Any]:
+        """Get PI status for today by team.
+        
+        Args:
+            pi: PI name/identifier
+            
+        Returns:
+            Tuple of (status_code, response_data)
+            Response structure: {
+                "success": true,
+                "data": {
+                    "data": [...],  # List of team status objects
+                    "count": int,
+                    "team": str | null,
+                    "group_name": str | null,
+                    "teams_in_group": [...]
+                }
+            }
+        """
+        resp = requests.get(
+            self._url("/api/v1/pis/get-pi-status-for-today-by-team"),
+            params={"pi": pi},
+            headers=self._headers(),
+            timeout=self.timeout_seconds,
+        )
+        return resp.status_code, self._safe_json(resp)
+
+    def get_average_sprint_velocity_per_team(
+        self,
+        pi: str | None = None,
+        num_sprints: int = 5,
+        team_name: str | None = None,
+        is_group: bool = False,
+    ) -> Tuple[int, Any]:
+        """Get average sprint velocity per team.
+        
+        Args:
+            pi: Optional PI name/identifier (if provided, uses teams participating in the PI)
+            num_sprints: Number of sprints to average (default: 5, max: 20)
+            team_name: Optional team name to filter by
+            is_group: Optional flag to treat team_name as a group
+            
+        Returns:
+            Tuple of (status_code, response_data)
+            Response structure: {
+                "success": true,
+                "data": {
+                    "velocity_data": [
+                        {"team_name": "Team Alpha", "avg_velocity": 12.5},
+                        ...
+                    ],
+                    "num_sprints": 5,
+                    "count": 3,
+                    "pi": "2025-Q1"
+                }
+            }
+        """
+        params: Dict[str, Any] = {}
+        if pi:
+            params["pi"] = pi
+        if num_sprints:
+            params["num_sprints"] = num_sprints
+        if team_name:
+            params["team_name"] = team_name
+        if is_group:
+            params["isGroup"] = "true"
+        
+        resp = requests.get(
+            self._url("/api/v1/team-metrics/get-average-sprint-velocity-per-team"),
+            params=params,
+            headers=self._headers(),
+            timeout=self.timeout_seconds,
+        )
+        return resp.status_code, self._safe_json(resp)
+
     def get_team_sprint_burndown(self, team_name: str, issue_type: str = "all", sprint_name: str | None = None) -> Tuple[int, Any]:
         params: Dict[str, Any] = {"team_name": team_name, "issue_type": issue_type}
         if sprint_name:
@@ -305,6 +380,30 @@ class APIClient:
         """
         resp = requests.get(
             self._url("/api/v1/issues/epic-outbound-dependency-metrics-by-quarter"),
+            params={"pi": pi},
+            headers=self._headers(),
+            timeout=self.timeout_seconds,
+        )
+        return resp.status_code, self._safe_json(resp)
+
+    def get_epics_by_pi(self, pi: str) -> Tuple[int, Any]:
+        """Get epics by PI with dependency metrics.
+        
+        Args:
+            pi: PI name/identifier (e.g., "Q42025")
+            
+        Returns:
+            Tuple of (status_code, response_data)
+            Response structure: {
+                "success": true,
+                "data": {
+                    "epics": [...],
+                    "count": int
+                }
+            }
+        """
+        resp = requests.get(
+            self._url("/api/v1/issues/epics-by-pi"),
             params={"pi": pi},
             headers=self._headers(),
             timeout=self.timeout_seconds,
