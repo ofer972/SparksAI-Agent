@@ -30,4 +30,8 @@ PROCESS_JOBS_CONTINUOUSLY: bool = True
 # Network backoff when backend is unreachable
 NETWORK_BACKOFF_CAP_SECONDS: int = _int_env("NETWORK_BACKOFF_CAP", 300)
 
+# API timeout configuration
+API_TIMEOUT_SECONDS: int = _int_env("API_TIMEOUT", 60)
+LLM_TIMEOUT_SECONDS: int = _int_env("LLM_TIMEOUT", 120)
+
 

@@ -7,9 +7,9 @@ import config
 
 
 class APIClient:
-    def __init__(self, base_url: Optional[str] = None, timeout_seconds: int = 60):
+    def __init__(self, base_url: Optional[str] = None, timeout_seconds: int | None = None):
         self.base_url: str = (base_url or config.BASE_URL).rstrip("/")
-        self.timeout_seconds: int = timeout_seconds
+        self.timeout_seconds: int = timeout_seconds if timeout_seconds is not None else config.API_TIMEOUT_SECONDS
 
     def _url(self, path: str) -> str:
         return f"{self.base_url}{path}"
@@ -423,7 +423,7 @@ class APIClient:
             self._url("/api/v1/agent-llm-process"),
             headers=self._headers(),
             json=body,
-            timeout=self.timeout_seconds,
+            timeout=config.LLM_TIMEOUT_SECONDS,
         )
         return resp.status_code, self._safe_json(resp)
 
