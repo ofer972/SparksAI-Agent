@@ -9,6 +9,8 @@ from utils_processing import (
     extract_text_and_json,
     extract_review_section,
     get_prompt_with_error_check,
+    get_group_closed_sprints_for_analysis,
+    get_group_sprint_burndown_for_analysis,
     process_llm_response_and_save_ai_card,
     save_recommendations_from_json,
 )
@@ -49,14 +51,24 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     if prompt_error:
         return False, prompt_error
 
+    # Get formatted closed sprints data for all teams in the group
+    closed_sprints_formatted = get_group_closed_sprints_for_analysis(client, group_name, months=3)
+    
+    # Get formatted burndown data for all teams in the group
+    burndown_formatted = get_group_sprint_burndown_for_analysis(client, group_name)
+    
     # Build formatted input by concatenating formatted sections
     parts = ["=== GROUP SPRINT PREDICTABILITY ==="]
     parts.append(f"Group: {group_name}")
     parts.append("")
     
-    # TODO: Add formatted sprint predictability data when backend endpoint is ready
-    # parts.append(sprint_predictability_formatted)
-    # parts.append("")
+    # Add formatted closed sprints data
+    parts.append(closed_sprints_formatted)
+    parts.append("")
+    
+    # Add formatted burndown data
+    parts.append(burndown_formatted)
+    parts.append("")
     
     # Add prompt (already includes markers from get_prompt_with_error_check)
     if prompt_text:

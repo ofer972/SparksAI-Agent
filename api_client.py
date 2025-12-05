@@ -267,6 +267,49 @@ class APIClient:
         )
         return resp.status_code, self._safe_json(resp)
 
+    def get_closed_sprints(
+        self,
+        team_name: str | None = None,
+        months: int = 3,
+        is_group: bool = False,
+        issue_type: str | None = None,
+    ) -> Tuple[int, Any]:
+        """Get closed sprints data.
+        
+        Args:
+            team_name: Optional team name or group name (if is_group=true)
+            months: Number of months to look back (default: 3, valid: 1, 2, 3, 4, 6, 9, 12)
+            is_group: If true, team_name is treated as a group name
+            issue_type: Optional issue type filter (e.g., 'Story', 'Bug', 'Task')
+            
+        Returns:
+            Tuple of (status_code, response_data)
+            Response structure: {
+                "success": true,
+                "data": {
+                    "months": int,
+                    "closed_sprints_by_team": {
+                        "TeamName": [...]
+                    }
+                }
+            }
+        """
+        params: Dict[str, Any] = {"months": months}
+        if team_name:
+            params["team_name"] = team_name
+        if is_group:
+            params["isGroup"] = "true"
+        if issue_type:
+            params["issue_type"] = issue_type
+        
+        resp = requests.get(
+            self._url("/api/v1/team-metrics/closed-sprints"),
+            params=params,
+            headers=self._headers(),
+            timeout=self.timeout_seconds,
+        )
+        return resp.status_code, self._safe_json(resp)
+
     def get_active_sprint_summary_by_team(self, team_name: str) -> Tuple[int, Any]:
         """Get active sprint summary by team from active_sprint_summary_by_team view.
         

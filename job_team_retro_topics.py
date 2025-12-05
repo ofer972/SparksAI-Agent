@@ -11,7 +11,7 @@ from utils_processing import (
     get_prompt_with_error_check,
     get_team_sprint_burndown_for_analysis,
     get_transcripts_for_analysis,
-    get_sprint_predictability_for_analysis,
+    get_closed_sprints_for_analysis,
     process_llm_response_and_save_ai_card,
     save_recommendations_from_json,
 )
@@ -36,8 +36,8 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     # Get sprint burndown
     burndown_formatted = get_team_sprint_burndown_for_analysis(client, team_name)
     
-    # Get sprint predictability (last 3 months)
-    sprint_predictability_formatted = get_sprint_predictability_for_analysis(
+    # Get closed sprints (last 3 months)
+    closed_sprints_formatted = get_closed_sprints_for_analysis(
         client=client,
         team_name=team_name,
         months=3,
@@ -68,8 +68,8 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     parts.append(burndown_formatted)
     parts.append("")
     
-    # Add formatted sprint predictability (includes "=== Previous Sprints metrics and predictability ===" header)
-    parts.append(sprint_predictability_formatted)
+    # Add formatted closed sprints (includes "=== CLOSED SPRINTS DATA ===" header)
+    parts.append(closed_sprints_formatted)
     
     # Add prompt (already includes markers from get_prompt_with_error_check)
     if prompt_text:

@@ -222,28 +222,12 @@ def get_group_sprint_burndown_for_analysis(
             # Get burndown for this team
             try:
                 team_burndown = get_team_sprint_burndown_for_analysis(client, team_name)
-                
-                # Remove the header line "=== BURN DOWN DATA FOR THE ACTIVE SPRINT ==="
-                # The function returns: "=== BURN DOWN DATA FOR THE ACTIVE SPRINT ===\n[data]\n"
-                # We want to extract just the [data] part
-                header_pattern = "=== BURN DOWN DATA FOR THE ACTIVE SPRINT ==="
-                if header_pattern in team_burndown:
-                    # Find the header and get everything after it
-                    header_index = team_burndown.find(header_pattern)
-                    if header_index != -1:
-                        # Get text after the header (skip header line and newline)
-                        after_header = team_burndown[header_index + len(header_pattern):].lstrip("\n")
-                        # Remove trailing empty line if present
-                        after_header = after_header.rstrip("\n")
-                        if after_header:
-                            parts.append(after_header)
-                        else:
-                            parts.append("No burndown data available")
-                    else:
-                        parts.append(team_burndown)
+                # Extract content without header using helper function
+                burndown_content = _extract_burndown_content_without_header(team_burndown)
+                if burndown_content:
+                    parts.append(burndown_content)
                 else:
-                    # No header found, use as-is
-                    parts.append(team_burndown.strip())
+                    parts.append("No burndown data available")
                     
             except Exception as e:
                 parts.append("No burndown data available")
@@ -254,6 +238,177 @@ def get_group_sprint_burndown_for_analysis(
         
     except Exception as e:
         return f"=== BURNDOWN OF ALL TEAMS IN GROUP: {group_name} ===\n⚠️ Error fetching group burndown data: {str(e)}\n"
+
+
+def _remove_keys_from_sprint_data(sprint: Dict[str, Any]) -> Dict[str, Any]:
+    """Remove issue key fields from sprint data.
+    
+    Args:
+        sprint: Sprint data dictionary
+        
+    Returns:
+        Cleaned sprint dictionary without key fields
+    """
+    keys_to_remove = [
+        "issues_at_start_keys",
+        "issues_remaining_keys",
+        "issues_added_keys",
+        "completed_issue_keys"
+    ]
+    cleaned = {k: v for k, v in sprint.items() if k not in keys_to_remove}
+    return cleaned
+
+
+def _extract_burndown_content_without_header(burndown_string: str) -> str:
+    """Extract burndown content without the header line.
+    
+    Args:
+        burndown_string: Full burndown string with header
+        
+    Returns:
+        Burndown content without header
+    """
+    header_pattern = "=== BURN DOWN DATA FOR THE ACTIVE SPRINT ==="
+    if header_pattern in burndown_string:
+        header_index = burndown_string.find(header_pattern)
+        if header_index != -1:
+            after_header = burndown_string[header_index + len(header_pattern):].lstrip("\n")
+            after_header = after_header.rstrip("\n")
+            if after_header:
+                return after_header
+    return burndown_string.strip()
+
+
+def get_closed_sprints_for_analysis(
+    client: APIClient,
+    team_name: str,
+    months: int = 3,
+    issue_type: str | None = None,
+) -> str:
+    """
+    Fetch closed sprints data for a team and format it for LLM analysis.
+    
+    Args:
+        client: APIClient instance
+        team_name: Team name to get closed sprints for
+        months: Number of months to look back (default: 3)
+        issue_type: Optional issue type filter
+        
+    Returns:
+        Formatted string with closed sprints data, including header.
+        Returns error message if fetch fails or data is empty.
+    """
+    try:
+        sc, data = client.get_closed_sprints(team_name=team_name, months=months, issue_type=issue_type)
+        
+        if sc != 200 or not isinstance(data, dict):
+            return "=== CLOSED SPRINTS DATA ===\nNo closed sprints data found (HTTP error)\n"
+        
+        # Extract closed sprints data from response structure
+        data_obj = data.get("data", {})
+        closed_sprints_by_team = data_obj.get("closed_sprints_by_team", {}) if isinstance(data_obj, dict) else {}
+        
+        if not closed_sprints_by_team or not isinstance(closed_sprints_by_team, dict):
+            return "=== CLOSED SPRINTS DATA ===\nNo closed sprints data found\n"
+        
+        # Get sprints for this team
+        team_sprints = closed_sprints_by_team.get(team_name, [])
+        
+        if not team_sprints or not isinstance(team_sprints, list):
+            return "=== CLOSED SPRINTS DATA ===\nNo closed sprints found for team\n"
+        
+        # Remove keys fields from each sprint
+        cleaned_sprints = [_remove_keys_from_sprint_data(sprint) for sprint in team_sprints]
+        
+        # Format as table
+        parts = ["=== CLOSED SPRINTS DATA ==="]
+        parts.append("")
+        
+        table = format_table(cleaned_sprints, max_width=25)
+        if table:
+            parts.append(table)
+        else:
+            parts.append("No closed sprints data available")
+        
+        parts.append("")
+        return "\n".join(parts)
+        
+    except Exception as e:
+        return f"=== CLOSED SPRINTS DATA ===\n⚠️ Error fetching closed sprints: {str(e)}\n"
+
+
+def get_group_closed_sprints_for_analysis(
+    client: APIClient,
+    group_name: str,
+    months: int = 3,
+    issue_type: str | None = None,
+) -> str:
+    """
+    Fetch closed sprints data for all teams in a group and format it for LLM analysis.
+    
+    Args:
+        client: APIClient instance
+        group_name: Group name to get closed sprints for all teams
+        months: Number of months to look back (default: 3)
+        issue_type: Optional issue type filter
+        
+    Returns:
+        Formatted string with closed sprints data for all teams, including headers.
+        Returns formatted message if group not found or has no teams.
+    """
+    try:
+        # Get teams in the group
+        sc, response = client.get_teams_in_group_by_name(group_name)
+        if sc != 200 or not isinstance(response, dict):
+            return f"=== CLOSED SPRINTS DATA FOR ALL TEAMS IN GROUP: {group_name} ===\n⚠️ Failed to fetch teams for group\n"
+        
+        data = response.get("data") or response
+        teams = data.get("teams", [])
+        
+        if not teams:
+            return f"=== CLOSED SPRINTS DATA FOR ALL TEAMS IN GROUP: {group_name} ===\nNo teams found in group\n"
+        
+        # Build formatted output
+        parts = [f"=== CLOSED SPRINTS DATA FOR ALL TEAMS IN GROUP: {group_name} ==="]
+        parts.append("")
+        
+        # Get closed sprints for each team
+        for team in teams:
+            team_name = team.get("team_name")
+            if not team_name:
+                continue
+            
+            parts.append(f"--- Team: {team_name} ---")
+            
+            # Get closed sprints for this team
+            try:
+                team_closed_sprints = get_closed_sprints_for_analysis(client, team_name, months=months, issue_type=issue_type)
+                
+                # Remove the header line "=== CLOSED SPRINTS DATA ==="
+                header_pattern = "=== CLOSED SPRINTS DATA ==="
+                if header_pattern in team_closed_sprints:
+                    header_index = team_closed_sprints.find(header_pattern)
+                    if header_index != -1:
+                        after_header = team_closed_sprints[header_index + len(header_pattern):].lstrip("\n")
+                        after_header = after_header.rstrip("\n")
+                        if after_header:
+                            parts.append(after_header)
+                        else:
+                            parts.append("No closed sprints data available")
+                    else:
+                        parts.append(team_closed_sprints)
+                else:
+                    parts.append(team_closed_sprints.strip())
+                    
+            except Exception as e:
+                parts.append("No closed sprints data available")
+            
+            parts.append("")  # Empty line between teams
+        
+        return "\n".join(parts)
+        
+    except Exception as e:
+        return f"=== CLOSED SPRINTS DATA FOR ALL TEAMS IN GROUP: {group_name} ===\n⚠️ Error fetching group closed sprints data: {str(e)}\n"
 
 
 def get_transcripts_for_analysis(
@@ -451,50 +606,6 @@ def get_active_sprint_summary_by_team_for_analysis(
     sprint_goal = sprint_with_max_issues.get("sprint_goal", "")
     
     return formatted_string, sprint_id, sprint_goal
-
-
-def get_sprint_predictability_for_analysis(
-    client: APIClient,
-    team_name: str,
-    months: int = 3,
-) -> str:
-    """
-    Fetch sprint predictability data and format it for LLM analysis.
-    
-    Args:
-        client: APIClient instance
-        team_name: Team name to get sprint predictability for
-        months: Number of months to look back (default: 3)
-        
-    Returns:
-        Formatted string with sprint predictability data, including header.
-        Returns error message if fetch fails or data is empty.
-    """
-    sc, data = client.get_sprint_predictability(team_name=team_name, months=months)
-    
-    if sc != 200 or not isinstance(data, dict):
-        return "=== Previous Sprints metrics and predictability ===\nNo sprint predictability data found (HTTP error)\n"
-    
-    # Extract sprint predictability data from response structure
-    data_obj = data.get("data", {})
-    sprint_predictability_list = data_obj.get("sprint_predictability", []) if isinstance(data_obj, dict) else []
-    
-    if not sprint_predictability_list or not isinstance(sprint_predictability_list, list):
-        return "=== Previous Sprints metrics and predictability ===\nNo sprint predictability data found\n"
-    
-    # Format as table
-    parts = ["=== Previous Sprints metrics and predictability ==="]
-    parts.append("")
-    
-    # Use format_table to create a nice table
-    table = format_table(sprint_predictability_list, max_width=25)
-    if table:
-        parts.append(table)
-    else:
-        parts.append("No sprint predictability data available")
-    
-    parts.append("")
-    return "\n".join(parts)
 
 
 def get_sprint_issues_with_epic_for_analysis(
