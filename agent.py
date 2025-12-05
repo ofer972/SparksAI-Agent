@@ -118,7 +118,7 @@ def run_agent() -> None:
                 time.sleep(config.POLLING_INTERVAL_AFTER_JOB_SECONDS)
                 continue
             print(
-                f"🎯 job_id={job_id} job_type='{job.get('job_type')}' team_name='{job.get('team_name')}' pi='{job.get('pi')}'"
+                f"🎯 job_id={job_id} job_type='{job.get('job_type')}' team_name='{job.get('team_name')}' group_name='{job.get('group_name')}' pi='{job.get('pi')}'"
             )
 
             # Job is already claimed by backend - proceed directly to processing

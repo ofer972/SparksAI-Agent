@@ -8,6 +8,8 @@ import job_team_pi_insight
 import job_team_retro_topics
 import job_pi_dependencies
 import job_pi_planning_gaps
+import job_group_sprint_flow
+import job_group_sprint_predictability
 
 
 def route_and_process(job: Dict[str, Any]) -> Tuple[bool, str]:
@@ -29,6 +31,10 @@ def route_and_process(job: Dict[str, Any]) -> Tuple[bool, str]:
         return job_pi_dependencies.process(job)
     if job_type == "PI Planning Gaps":
         return job_pi_planning_gaps.process(job)
+    if job_type == "Group Sprint Flow":
+        return job_group_sprint_flow.process(job)
+    if job_type == "Group Sprint Predictability":
+        return job_group_sprint_predictability.process(job)
     return False, f"Unknown job type: {job_type}"
 
 

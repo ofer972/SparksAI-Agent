@@ -12,6 +12,8 @@ JOB_TYPES = [
     "Team Retro Topics",
     "PI Dependencies",
     "PI Planning Gaps",
+    "Group Sprint Flow",
+    "Group Sprint Predictability",
 ]
 
 # Polling intervals (defaults match current project behavior)

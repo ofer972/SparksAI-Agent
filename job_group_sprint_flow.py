@@ -9,46 +9,36 @@ from utils_processing import (
     extract_text_and_json,
     extract_review_section,
     get_prompt_with_error_check,
-    get_team_sprint_burndown_for_analysis,
-    get_transcripts_for_analysis,
-    get_sprint_predictability_for_analysis,
     process_llm_response_and_save_ai_card,
     save_recommendations_from_json,
 )
 
 
 def process(job: Dict[str, Any]) -> Tuple[bool, str]:
+    """Process Group Sprint Flow job type.
+    
+    Args:
+        job: Job payload dictionary
+        
+    Returns:
+        Tuple of (success, result_text)
+    """
     client = APIClient()
     job_id = job.get("job_id") or job.get("id")
-    team_name = job.get("team_name")
-    if not team_name:
-        return False, "Missing team_name in job payload"
+    group_name = job.get("group_name")
+    if not group_name:
+        return False, "Missing group_name in job payload"
 
-    # Get formatted data using helper functions
-    # Get latest 5 transcripts
-    transcripts_formatted = get_transcripts_for_analysis(
-        client=client,
-        transcript_type="Daily",
-        team_name=team_name,
-        limit=5,
-    )
-    
-    # Get sprint burndown
-    burndown_formatted = get_team_sprint_burndown_for_analysis(client, team_name)
-    
-    # Get sprint predictability (last 3 months)
-    sprint_predictability_formatted = get_sprint_predictability_for_analysis(
-        client=client,
-        team_name=team_name,
-        months=3,
-    )
+    # TODO: Fetch group-level sprint flow data when backend endpoint is ready
+    # For now, leave data sections empty as requested
+    # sprint_flow_formatted = get_group_sprint_flow_for_analysis(client, group_name)
 
     # Fetch prompt with error checking
     prompt_text, prompt_error = get_prompt_with_error_check(
         client=client,
-        email_address="TeamAgent",
-        prompt_name="Team Retro Topics",
-        job_type="Team Retro Topics",
+        email_address="GroupAgent",
+        prompt_name="Group Sprint Flow",
+        job_type="Group Sprint Flow",
         job_id=int(job_id) if job_id is not None else None,
     )
     
@@ -56,20 +46,13 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
         return False, prompt_error
 
     # Build formatted input by concatenating formatted sections
-    parts = ["=== TEAM RETRO TOPICS ==="]
-    parts.append(f"Team: {team_name}")
+    parts = ["=== GROUP SPRINT FLOW ==="]
+    parts.append(f"Group: {group_name}")
     parts.append("")
     
-    # Add formatted transcripts (includes "Begin transcript(s)" / "End transcript(s)" markers)
-    parts.append(transcripts_formatted)
-    parts.append("")
-    
-    # Add formatted burndown (includes "=== BURN DOWN DATA FOR THE ACTIVE SPRINT ===" header)
-    parts.append(burndown_formatted)
-    parts.append("")
-    
-    # Add formatted sprint predictability (includes "=== Previous Sprints metrics and predictability ===" header)
-    parts.append(sprint_predictability_formatted)
+    # TODO: Add formatted sprint flow data when backend endpoint is ready
+    # parts.append(sprint_flow_formatted)
+    # parts.append("")
     
     # Add prompt (already includes markers from get_prompt_with_error_check)
     if prompt_text:
@@ -83,9 +66,9 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     ok, llm_answer, _raw = call_agent_llm_process(
         client=client,
         prompt=formatted,
-        job_type="Team Retro Topics",
+        job_type="Group Sprint Flow",
         job_id=int(job_id) if job_id is not None else None,
-        metadata={"team_name": team_name},
+        metadata={"group_name": group_name},
     )
     if not ok:
         return False, "AI chat failed or returned empty response"
@@ -100,16 +83,17 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     description, full_info_truncated, raw_json_string, card_id = process_llm_response_and_save_ai_card(
         client=client,
         llm_answer=llm_answer,
-        team_name=team_name,
+        team_name=None,  # Group cards use group_name instead
         job_id=int(job_id) if job_id is not None else None,
         card_config={
-            "card_name": "Team Retro Topics",
-            "card_type": "Team Retro Topics",
+            "card_name": "Group Sprint Flow",
+            "card_type": "Group Sprint Flow",
             "priority": "High",
-            "source": "Team Retro Topics",
+            "source": "Group",
         },
-        card_type="Team",
+        card_type="Team",  # Use Team AI cards endpoint (which accepts group_name)
         extract_content_fn=extract_review_section,
+        group_name=group_name,  # Pass group_name to be included in card payload
     )
     
     # Extract recommendations_json from LLM response for recommendations saving
@@ -120,10 +104,11 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     
     today = datetime.now(timezone.utc).date().isoformat()
     if recommendations_json:
+        # For recommendations, use group_name as team_name_or_pi
         save_recommendations_from_json(
             client=client,
             recommendations_json=recommendations_json,
-            team_name_or_pi=team_name,
+            team_name_or_pi=group_name,  # Use group_name for recommendations
             today=today,
             full_info_truncated=full_info_truncated,
             max_count=2,
@@ -136,9 +121,9 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
 
     # Create detailed result text with full LLM response (like other jobs)
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-    result_text = f"""Team Retro Topics Analysis Completed
+    result_text = f"""Group Sprint Flow Analysis Completed
 
-Team: {team_name}
+Group: {group_name}
 Job ID: {job_id}
 Timestamp: {timestamp}
 

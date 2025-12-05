@@ -62,8 +62,8 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     # Fetch prompt with error checking
     prompt_text, prompt_error = get_prompt_with_error_check(
         client=client,
-        email_address="PIAgent",
-        prompt_name="TeamPIInsight",
+        email_address="TeamAgent",
+        prompt_name="Team PI Insights",
         job_type="Team PI Insight",
         job_id=int(job_id) if job_id is not None else None,
     )

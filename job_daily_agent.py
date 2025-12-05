@@ -33,7 +33,7 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     # Fetch prompt with error checking
     prompt_text, prompt_error = get_prompt_with_error_check(
         client=client,
-        email_address="DailyAgent",
+        email_address="TeamAgent",
         prompt_name="Daily Insights",
         job_type="Daily Progress",
         job_id=int(job_id) if job_id is not None else None,

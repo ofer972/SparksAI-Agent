@@ -377,6 +377,7 @@ def process_llm_response_and_save_ai_card(
     card_config: Dict[str, Any],
     card_type: str,  # "PI" or "Team"
     extract_content_fn: Callable[[str], str | None] = extract_pi_sync_review,
+    group_name: str | None = None,  # Optional group_name for Group cards
 ) -> Tuple[str, str, str, int]:
     """
     Process LLM response, extract structured content, and save AI cards.
@@ -384,11 +385,12 @@ def process_llm_response_and_save_ai_card(
     Args:
         client: APIClient instance
         llm_answer: Full LLM response text
-        team_name: Team name from job
+        team_name: Team name from job (used for Team cards, ignored if group_name is provided)
         job_id: Optional job ID
         card_config: Dict with keys: card_name, card_type, priority, source, pi (if PI card)
         card_type: "PI" for pi-ai-cards, "Team" for team-ai-cards
         extract_content_fn: Function to extract description from LLM response (default: extract_pi_sync_review)
+        group_name: Optional group_name for Group cards (if provided, used instead of team_name)
     
     Returns:
         Tuple of (description, full_information, raw_json_string, card_id)
@@ -428,6 +430,10 @@ def process_llm_response_and_save_ai_card(
         "source_job_id": job_id,
         "full_information": full_info_truncated,
     }
+    
+    # Add group_name if provided (for Group cards - backend accepts group_name in Team AI cards endpoint)
+    if group_name:
+        card_payload["group_name"] = group_name
     
     # Add PI if present in config (for PI cards)
     if "pi" in card_config:
@@ -500,31 +506,45 @@ def process_llm_response_and_save_ai_card(
                 for c in items:
                     try:
                         same_date = str(c.get("date", ""))[:10] == today
-                        # Normalize team_name for comparison (handles None vs "" mismatch)
-                        existing_team_name = c.get("team_name") or ""
-                        payload_team_name = card_payload.get("team_name") or ""
+                        same_card_name = c.get("card_name") == card_payload["card_name"]
                         
-                        if same_date and existing_team_name == payload_team_name and c.get("card_name") == card_payload["card_name"]:
-                            # Extract card ID with validation
-                            card_id_raw = c.get("id")
-                            if card_id_raw is None:
-                                print(f"⚠️ WARNING: Existing card found but id is None, skipping")
+                        if not same_date or not same_card_name:
+                            continue
+                        
+                        # For Group cards (when group_name is provided), match on group_name
+                        if group_name is not None:
+                            existing_group_name = c.get("group_name")
+                            payload_group_name = card_payload.get("group_name")
+                            if existing_group_name != payload_group_name:
                                 continue
-                            try:
-                                card_id = int(card_id_raw)
-                            except (ValueError, TypeError) as e:
-                                print(f"⚠️ WARNING: Cannot convert card id to int: {card_id_raw}, error: {e}")
+                        else:
+                            # For Team cards (when group_name is None), match on team_name
+                            existing_team_name = c.get("team_name") or ""
+                            payload_team_name = card_payload.get("team_name") or ""
+                            if existing_team_name != payload_team_name:
                                 continue
-                            
-                            # Patch existing
-                            psc, presp = client.patch_team_ai_card(card_id, card_payload)
-                            if psc < 300:
-                                # Patch succeeded, card_id is already set
-                                upsert_done = True
-                                break
-                            else:
-                                print(f"⚠️ Patch team-ai-card failed: {psc} {presp}")
-                                # Don't set upsert_done, will try to create new
+                        
+                        # All conditions matched - this is the card to update
+                        # Extract card ID with validation
+                        card_id_raw = c.get("id")
+                        if card_id_raw is None:
+                            print(f"⚠️ WARNING: Existing card found but id is None, skipping")
+                            continue
+                        try:
+                            card_id = int(card_id_raw)
+                        except (ValueError, TypeError) as e:
+                            print(f"⚠️ WARNING: Cannot convert card id to int: {card_id_raw}, error: {e}")
+                            continue
+                        
+                        # Patch existing
+                        psc, presp = client.patch_team_ai_card(card_id, card_payload)
+                        if psc < 300:
+                            # Patch succeeded, card_id is already set
+                            upsert_done = True
+                            break
+                        else:
+                            print(f"⚠️ Patch team-ai-card failed: {psc} {presp}")
+                            # Don't set upsert_done, will try to create new
                     except Exception as e:
                         # Log exception instead of silently swallowing
                         print(f"⚠️ WARNING: Exception in Team card upsert loop: {e}")
