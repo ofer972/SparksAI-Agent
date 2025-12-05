@@ -9,6 +9,7 @@ from utils_processing import (
     extract_text_and_json,
     extract_review_section,
     get_prompt_with_error_check,
+    get_group_sprint_burndown_for_analysis,
     process_llm_response_and_save_ai_card,
     save_recommendations_from_json,
 )
@@ -45,14 +46,17 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     if prompt_error:
         return False, prompt_error
 
+    # Get formatted burndown data for all teams in the group
+    burndown_formatted = get_group_sprint_burndown_for_analysis(client, group_name)
+    
     # Build formatted input by concatenating formatted sections
     parts = ["=== GROUP SPRINT FLOW ==="]
     parts.append(f"Group: {group_name}")
     parts.append("")
     
-    # TODO: Add formatted sprint flow data when backend endpoint is ready
-    # parts.append(sprint_flow_formatted)
-    # parts.append("")
+    # Add formatted burndown data
+    parts.append(burndown_formatted)
+    parts.append("")
     
     # Add prompt (already includes markers from get_prompt_with_error_check)
     if prompt_text:
@@ -63,6 +67,7 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
         client.patch_agent_job(int(job_id), {"input_sent": formatted})
 
     # Call dedicated agent LLM processing endpoint
+    print(f"📤 Calling LLM for Group Sprint Flow (input: {len(formatted)} chars)")
     ok, llm_answer, _raw = call_agent_llm_process(
         client=client,
         prompt=formatted,

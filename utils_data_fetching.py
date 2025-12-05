@@ -180,6 +180,82 @@ def get_team_sprint_burndown_for_analysis(
     return "=== BURN DOWN DATA FOR THE ACTIVE SPRINT ===\nNo burndown data available\n"
 
 
+def get_group_sprint_burndown_for_analysis(
+    client: APIClient,
+    group_name: str,
+) -> str:
+    """
+    Fetch sprint burndown data for all teams in a group and format it for LLM analysis.
+    
+    Args:
+        client: APIClient instance
+        group_name: Group name to get burndown for all teams
+        
+    Returns:
+        Formatted string with burndown data for all teams, including headers.
+        Returns formatted message if group not found or has no teams.
+    """
+    try:
+        # Get teams in the group
+        sc, response = client.get_teams_in_group_by_name(group_name)
+        if sc != 200 or not isinstance(response, dict):
+            return f"=== BURNDOWN OF ALL TEAMS IN GROUP: {group_name} ===\n⚠️ Failed to fetch teams for group\n"
+        
+        data = response.get("data") or response
+        teams = data.get("teams", [])
+        
+        if not teams:
+            return f"=== BURNDOWN OF ALL TEAMS IN GROUP: {group_name} ===\nNo teams found in group\n"
+        
+        # Build formatted output
+        parts = [f"=== BURNDOWN OF ALL TEAMS IN GROUP: {group_name} ==="]
+        parts.append("")
+        
+        # Get burndown for each team
+        for team in teams:
+            team_name = team.get("team_name")
+            if not team_name:
+                continue
+            
+            parts.append(f"--- Team: {team_name} ---")
+            
+            # Get burndown for this team
+            try:
+                team_burndown = get_team_sprint_burndown_for_analysis(client, team_name)
+                
+                # Remove the header line "=== BURN DOWN DATA FOR THE ACTIVE SPRINT ==="
+                # The function returns: "=== BURN DOWN DATA FOR THE ACTIVE SPRINT ===\n[data]\n"
+                # We want to extract just the [data] part
+                header_pattern = "=== BURN DOWN DATA FOR THE ACTIVE SPRINT ==="
+                if header_pattern in team_burndown:
+                    # Find the header and get everything after it
+                    header_index = team_burndown.find(header_pattern)
+                    if header_index != -1:
+                        # Get text after the header (skip header line and newline)
+                        after_header = team_burndown[header_index + len(header_pattern):].lstrip("\n")
+                        # Remove trailing empty line if present
+                        after_header = after_header.rstrip("\n")
+                        if after_header:
+                            parts.append(after_header)
+                        else:
+                            parts.append("No burndown data available")
+                    else:
+                        parts.append(team_burndown)
+                else:
+                    # No header found, use as-is
+                    parts.append(team_burndown.strip())
+                    
+            except Exception as e:
+                parts.append("No burndown data available")
+            
+            parts.append("")  # Empty line between teams
+        
+        return "\n".join(parts)
+        
+    except Exception as e:
+        return f"=== BURNDOWN OF ALL TEAMS IN GROUP: {group_name} ===\n⚠️ Error fetching group burndown data: {str(e)}\n"
+
+
 def get_transcripts_for_analysis(
     client: APIClient,
     transcript_type: str | None = None,

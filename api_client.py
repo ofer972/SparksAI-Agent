@@ -489,6 +489,38 @@ class APIClient:
         )
         return resp.status_code, self._safe_json(resp)
 
+    def get_teams_in_group_by_name(self, group_name: str) -> Tuple[int, Any]:
+        """Get all teams in a group by group name.
+        
+        Args:
+            group_name: The name of the group
+            
+        Returns:
+            Tuple of (status_code, response_data)
+            Response structure: {
+                "success": true,
+                "data": {
+                    "teams": [
+                        {
+                            "team_key": int,
+                            "team_name": str,
+                            "number_of_team_members": int,
+                            "group_key": int
+                        },
+                        ...
+                    ],
+                    "count": int,
+                    "group_key": int
+                }
+            }
+        """
+        resp = requests.get(
+            self._url(f"/api/v1/groups/by-name/{group_name}/teams"),
+            headers=self._headers(),
+            timeout=self.timeout_seconds,
+        )
+        return resp.status_code, self._safe_json(resp)
+
     def check_health(self) -> Tuple[int, Any]:
         """Check backend health by calling /health endpoint."""
         resp = requests.get(

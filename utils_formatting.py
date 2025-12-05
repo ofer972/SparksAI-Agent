@@ -101,6 +101,10 @@ def format_burndown_markdown(burndown: Dict[str, Any] | List[Dict[str, Any]] | N
     other_fields = []
     
     for k, v in burndown.items():
+        # Skip isGroup field - not needed in output
+        if k.lower() == 'isgroup':
+            continue
+            
         k_lower = str(k).lower()
         
         # Check if it's a list (especially burndown_data)

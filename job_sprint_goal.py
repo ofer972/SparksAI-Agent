@@ -82,6 +82,7 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
         client.patch_agent_job(int(job_id), {"input_sent": formatted})
 
     # Call dedicated agent LLM processing endpoint
+    print(f"📤 Calling LLM for Sprint Goal (input: {len(formatted)} chars)")
     ok, llm_answer, _raw = call_agent_llm_process(
         client=client,
         prompt=formatted,
