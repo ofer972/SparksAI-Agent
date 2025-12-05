@@ -515,10 +515,16 @@ def process_llm_response_and_save_ai_card(
                         if group_name is not None:
                             existing_group_name = c.get("group_name")
                             payload_group_name = card_payload.get("group_name")
-                            if existing_group_name != payload_group_name:
+                            # Only match if both have group_name and they're the same
+                            # Skip if existing card has no group_name (it's a team card, not a group card)
+                            if existing_group_name is None or existing_group_name != payload_group_name:
                                 continue
                         else:
                             # For Team cards (when group_name is None), match on team_name
+                            # Skip if existing card has a group_name (it's a group card, not a team card)
+                            existing_group_name = c.get("group_name")
+                            if existing_group_name is not None:
+                                continue  # Skip group cards when looking for team cards
                             existing_team_name = c.get("team_name") or ""
                             payload_team_name = card_payload.get("team_name") or ""
                             if existing_team_name != payload_team_name:
