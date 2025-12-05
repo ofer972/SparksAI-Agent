@@ -412,12 +412,15 @@ def process_llm_response_and_save_ai_card(
     # Create card payload
     today = datetime.now(timezone.utc).date().isoformat()
     
-    # Normalize team_name: None -> "" for PI cards, keep as-is for Team cards
-    # This ensures consistency with UNIQUE constraint in database
-    normalized_team_name = team_name if team_name is not None else ""
-    if card_type == "PI":
-        # PI cards should use "" instead of None for consistency with UNIQUE constraint
-        normalized_team_name = normalized_team_name or ""
+    # Normalize team_name based on card type
+    if card_type == "Team":
+        # For Team cards: group cards use None (NULL in DB), team cards use actual team_name
+        normalized_team_name = None if group_name is not None else team_name
+    elif card_type == "PI":
+        # PI cards: use "" instead of None for consistency with UNIQUE constraint
+        normalized_team_name = team_name if team_name is not None else ""
+    else:
+        normalized_team_name = team_name
     
     card_payload = {
         "team_name": normalized_team_name,
@@ -499,12 +502,16 @@ def process_llm_response_and_save_ai_card(
             elif csc >= 300:
                 print(f"⚠️ Create pi-ai-card failed: {csc} {cresp}")
     elif card_type == "Team":
-        sc, cards = client.list_team_ai_cards()
+        # Use query parameters to filter on backend (more efficient)
+        sc, cards = client.list_team_ai_cards(date=today, card_name=card_payload["card_name"])
         if sc == 200 and isinstance(cards, dict):
-            items = cards.get("data") or cards
+            # Backend returns: {"success": true, "data": {"cards": [...]}}
+            data = cards.get("data") or {}
+            items = data.get("cards") if isinstance(data, dict) else []
             if isinstance(items, list):
                 for c in items:
                     try:
+                        # Backend already filters by date and card_name, but keep as safety check
                         same_date = str(c.get("date", ""))[:10] == today
                         same_card_name = c.get("card_name") == card_payload["card_name"]
                         
@@ -514,20 +521,20 @@ def process_llm_response_and_save_ai_card(
                         # For Group cards (when group_name is provided), match on group_name
                         if group_name is not None:
                             existing_group_name = c.get("group_name")
+                            existing_team_name = c.get("team_name")  # Should be None for group cards
                             payload_group_name = card_payload.get("group_name")
-                            # Only match if both have group_name and they're the same
-                            # Skip if existing card has no group_name (it's a team card, not a group card)
-                            if existing_group_name is None or existing_group_name != payload_group_name:
+                            
+                            # Skip if: different group_name OR existing card has team_name (not a group card)
+                            if existing_group_name != payload_group_name or existing_team_name is not None:
                                 continue
                         else:
                             # For Team cards (when group_name is None), match on team_name
-                            # Skip if existing card has a group_name (it's a group card, not a team card)
-                            existing_group_name = c.get("group_name")
-                            if existing_group_name is not None:
-                                continue  # Skip group cards when looking for team cards
-                            existing_team_name = c.get("team_name") or ""
-                            payload_team_name = card_payload.get("team_name") or ""
-                            if existing_team_name != payload_team_name:
+                            existing_group_name = c.get("group_name")  # Should be None for team cards
+                            existing_team_name = c.get("team_name")
+                            payload_team_name = card_payload.get("team_name")
+                            
+                            # Skip if: existing card has group_name (not a team card) OR different team_name
+                            if existing_group_name is not None or existing_team_name != payload_team_name:
                                 continue
                         
                         # All conditions matched - this is the card to update

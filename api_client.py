@@ -515,10 +515,16 @@ class APIClient:
         )
         return resp.status_code, self._safe_json(resp)
 
-    def list_team_ai_cards(self) -> Tuple[int, Any]:
+    def list_team_ai_cards(self, date: str | None = None, card_name: str | None = None) -> Tuple[int, Any]:
+        params = {}
+        if date:
+            params["date"] = date
+        if card_name:
+            params["card_name"] = card_name
         resp = requests.get(
             self._url("/api/v1/team-ai-cards"),
             headers=self._headers(),
+            params=params if params else None,
             timeout=self.timeout_seconds,
         )
         return resp.status_code, self._safe_json(resp)
