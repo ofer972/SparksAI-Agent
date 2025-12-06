@@ -452,7 +452,9 @@ def process_llm_response_and_save_ai_card(
     if card_type == "PI":
         sc, cards = client.list_pi_ai_cards()
         if sc == 200 and isinstance(cards, dict):
-            items = cards.get("data") or cards
+            # Extract cards list from response structure: {"success": true, "data": {"cards": [...]}}
+            data = cards.get("data") or {}
+            items = data.get("cards") if isinstance(data, dict) else (cards if isinstance(cards, list) else [])
             if isinstance(items, list):
                 for c in items:
                     try:
@@ -584,7 +586,6 @@ def process_llm_response_and_save_ai_card(
         f"🗂️ Card insight: name='{card_payload['card_name']}' type='{card_payload['card_type']}' priority='{card_payload['priority']}' preview='{desc_preview}'"
     )
     
-    # Log card_id for debugging
     if card_id is not None:
         print(f"✅ Card ID extracted: {card_id}")
     else:
