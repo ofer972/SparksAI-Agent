@@ -908,7 +908,7 @@ def get_pi_burndown_for_analysis(
 def get_pi_dependencies_for_analysis(
     client: APIClient,
     pi: str,
-) -> Tuple[str, str]:
+) -> Tuple[str, str, int, int]:
     """
     Fetch inbound and outbound dependencies and format as tables for LLM.
     
@@ -917,10 +917,14 @@ def get_pi_dependencies_for_analysis(
         pi: PI name/identifier (e.g., "Q42025")
         
     Returns:
-        Tuple of (inbound_formatted, outbound_formatted) as formatted strings
+        Tuple of (inbound_formatted, outbound_formatted, inbound_count, outbound_count)
         Each string includes a header and formatted table
+        Counts represent the number of dependency items found
     """
     from utils_formatting import format_table
+    
+    inbound_count = 0
+    outbound_count = 0
     
     # Fetch inbound dependencies
     status_code, inbound_response = client.get_epic_inbound_dependency_load_by_quarter(pi)
@@ -931,6 +935,7 @@ def get_pi_dependencies_for_analysis(
         if isinstance(inbound_response, dict) and inbound_response.get("success"):
             data = inbound_response.get("data", [])
             if data and isinstance(data, list):
+                inbound_count = len(data)
                 table = format_table(data, max_width=50)
                 inbound_formatted = f"=== INBOUND DEPENDENCIES ===\n{table}\n"
             else:
@@ -947,6 +952,7 @@ def get_pi_dependencies_for_analysis(
         if isinstance(outbound_response, dict) and outbound_response.get("success"):
             data = outbound_response.get("data", [])
             if data and isinstance(data, list):
+                outbound_count = len(data)
                 table = format_table(data, max_width=50)
                 outbound_formatted = f"=== OUTBOUND DEPENDENCIES ===\n{table}\n"
             else:
@@ -954,13 +960,73 @@ def get_pi_dependencies_for_analysis(
         else:
             outbound_formatted = "=== OUTBOUND DEPENDENCIES ===\n⚠️ Invalid response format\n"
     
-    return inbound_formatted, outbound_formatted
+    return inbound_formatted, outbound_formatted, inbound_count, outbound_count
+
+
+def get_group_dependencies_for_analysis(
+    client: APIClient,
+    pi: str,
+    group_name: str,
+) -> Tuple[str, str, int, int]:
+    """
+    Fetch inbound and outbound dependencies for a group and format as tables for LLM.
+    
+    Args:
+        client: APIClient instance
+        pi: PI name/identifier (e.g., "Q42025")
+        group_name: Group name to filter dependencies
+        
+    Returns:
+        Tuple of (inbound_formatted, outbound_formatted, inbound_count, outbound_count)
+        Each string includes a header and formatted table
+        Counts represent the number of dependency items found
+    """
+    from utils_formatting import format_table
+    
+    inbound_count = 0
+    outbound_count = 0
+    
+    # Fetch inbound dependencies
+    status_code, inbound_response = client.get_epic_inbound_dependency_load_by_quarter_for_group(pi, group_name)
+    if status_code != 200:
+        inbound_formatted = f"=== INBOUND DEPENDENCIES ===\n⚠️ Failed to fetch: HTTP {status_code}\n"
+    else:
+        # Extract data array from response
+        if isinstance(inbound_response, dict) and inbound_response.get("success"):
+            data = inbound_response.get("data", [])
+            if data and isinstance(data, list):
+                inbound_count = len(data)
+                table = format_table(data, max_width=50)
+                inbound_formatted = f"=== INBOUND DEPENDENCIES ===\n{table}\n"
+            else:
+                inbound_formatted = "=== INBOUND DEPENDENCIES ===\nNo inbound dependency data found\n"
+        else:
+            inbound_formatted = "=== INBOUND DEPENDENCIES ===\n⚠️ Invalid response format\n"
+    
+    # Fetch outbound dependencies
+    status_code, outbound_response = client.get_epic_outbound_dependency_metrics_by_quarter_for_group(pi, group_name)
+    if status_code != 200:
+        outbound_formatted = f"=== OUTBOUND DEPENDENCIES ===\n⚠️ Failed to fetch: HTTP {status_code}\n"
+    else:
+        # Extract data array from response
+        if isinstance(outbound_response, dict) and outbound_response.get("success"):
+            data = outbound_response.get("data", [])
+            if data and isinstance(data, list):
+                outbound_count = len(data)
+                table = format_table(data, max_width=50)
+                outbound_formatted = f"=== OUTBOUND DEPENDENCIES ===\n{table}\n"
+            else:
+                outbound_formatted = "=== OUTBOUND DEPENDENCIES ===\nNo outbound dependency data found\n"
+        else:
+            outbound_formatted = "=== OUTBOUND DEPENDENCIES ===\n⚠️ Invalid response format\n"
+    
+    return inbound_formatted, outbound_formatted, inbound_count, outbound_count
 
 
 def get_pi_planning_gaps_for_analysis(
     client: APIClient,
     pi: str,
-) -> Tuple[str, str]:
+) -> Tuple[str, str, int, int]:
     """
     Fetch PI planning gaps data (using dependency endpoints for now).
     Follows same pattern as get_pi_dependencies_for_analysis.
@@ -970,8 +1036,9 @@ def get_pi_planning_gaps_for_analysis(
         pi: PI name/identifier (e.g., "Q42025")
         
     Returns:
-        Tuple of (inbound_formatted, outbound_formatted) as formatted strings
+        Tuple of (inbound_formatted, outbound_formatted, inbound_count, outbound_count)
         Each string includes a header and formatted table
+        Counts represent the number of dependency items found
         Note: Currently uses dependency endpoints; can be updated when specific planning gaps endpoint is available
     """
     # For now, use the same dependency endpoints as PI Dependencies

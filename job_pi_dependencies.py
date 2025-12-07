@@ -101,10 +101,16 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     current_date = datetime.now(timezone.utc).date().isoformat()
 
     # Fetch inbound and outbound dependencies
-    inbound_formatted, outbound_formatted = get_pi_dependencies_for_analysis(
+    inbound_formatted, outbound_formatted, inbound_count, outbound_count = get_pi_dependencies_for_analysis(
         client=client,
         pi=pi,
     )
+    
+    # Validate that we have dependencies to analyze
+    if inbound_count == 0 or outbound_count == 0:
+        error_msg = f"No dependencies found: inbound={inbound_count}, outbound={outbound_count}"
+        print(f"❌ {error_msg}")
+        return False, error_msg
 
     # Fetch prompt with error checking
     prompt_text, prompt_error = get_prompt_with_error_check(

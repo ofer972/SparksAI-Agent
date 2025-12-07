@@ -39,6 +39,7 @@ from utils_data_fetching import (
     get_epics_by_pi_for_analysis,
     get_pi_burndown_for_analysis,
     get_pi_dependencies_for_analysis,
+    get_group_dependencies_for_analysis,
     get_pi_planning_gaps_for_analysis,
 )
 
@@ -83,6 +84,7 @@ __all__ = [
     "get_epics_by_pi_for_analysis",
     "get_pi_burndown_for_analysis",
     "get_pi_dependencies_for_analysis",
+    "get_group_dependencies_for_analysis",
     "get_pi_planning_gaps_for_analysis",
     # LLM processing and extraction
     "clean_recommendation_text",

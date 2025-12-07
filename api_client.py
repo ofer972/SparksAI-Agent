@@ -169,6 +169,36 @@ class APIClient:
         )
         return resp.status_code, self._safe_json(resp)
 
+    def get_current_and_next_pis(self) -> Tuple[int, Any]:
+        """Get current and next PIs.
+        
+        Returns:
+            Tuple of (status_code, response_data)
+            Response structure: {
+                "success": true,
+                "data": {
+                    "current_pis": [
+                        {
+                            "pi_name": "Q42025",
+                            "start_date": "2025-10-05",
+                            "end_date": "2025-12-28"
+                        }
+                    ],
+                    "next_pis": [...]
+                },
+                "count": {
+                    "current": 1,
+                    "next": 1
+                }
+            }
+        """
+        resp = requests.get(
+            self._url("/api/v1/pis/current-and-next"),
+            headers=self._headers(),
+            timeout=self.timeout_seconds,
+        )
+        return resp.status_code, self._safe_json(resp)
+
     def get_average_sprint_velocity_per_team(
         self,
         pi: str | None = None,
@@ -424,6 +454,44 @@ class APIClient:
         resp = requests.get(
             self._url("/api/v1/issues/epic-outbound-dependency-metrics-by-quarter"),
             params={"pi": pi},
+            headers=self._headers(),
+            timeout=self.timeout_seconds,
+        )
+        return resp.status_code, self._safe_json(resp)
+
+    def get_epic_inbound_dependency_load_by_quarter_for_group(self, pi: str, group_name: str) -> Tuple[int, Any]:
+        """Get inbound dependency load by quarter for a group within a PI.
+        
+        Args:
+            pi: PI name/identifier (e.g., "Q42025")
+            group_name: Group name to filter dependencies
+            
+        Returns:
+            Tuple of (status_code, response_data)
+            Response structure: {"success": true, "data": [...]}
+        """
+        resp = requests.get(
+            self._url("/api/v1/issues/epic-inbound-dependency-load-by-quarter"),
+            params={"pi": pi, "team_name": group_name, "isGroup": "true"},
+            headers=self._headers(),
+            timeout=self.timeout_seconds,
+        )
+        return resp.status_code, self._safe_json(resp)
+
+    def get_epic_outbound_dependency_metrics_by_quarter_for_group(self, pi: str, group_name: str) -> Tuple[int, Any]:
+        """Get outbound dependency metrics by quarter for a group within a PI.
+        
+        Args:
+            pi: PI name/identifier (e.g., "Q42025")
+            group_name: Group name to filter dependencies
+            
+        Returns:
+            Tuple of (status_code, response_data)
+            Response structure: {"success": true, "data": [...]}
+        """
+        resp = requests.get(
+            self._url("/api/v1/issues/epic-outbound-dependency-metrics-by-quarter"),
+            params={"pi": pi, "team_name": group_name, "isGroup": "true"},
             headers=self._headers(),
             timeout=self.timeout_seconds,
         )
