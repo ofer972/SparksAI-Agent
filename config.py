@@ -14,7 +14,8 @@ JOB_TYPES = [
     "PI Planning Gaps",
     "Group Sprint Flow",
     "Group Sprint Predictability",
-    "Group Dependencies",
+    "Group Epic Dependencies",
+    "Group Sprint Dependency",
 ]
 
 # Polling intervals (defaults match current project behavior)

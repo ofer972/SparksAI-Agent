@@ -8,7 +8,8 @@ from utils_processing import (
     extract_recommendations,
     extract_review_section,
     extract_text_and_json,
-    get_group_dependencies_for_analysis,
+    get_group_active_sprint_stories_by_epic_for_analysis,
+    get_group_sprint_dependencies_for_analysis,
     get_prompt_with_error_check,
     process_llm_response_and_save_ai_card,
     save_recommendations_from_json,
@@ -16,7 +17,7 @@ from utils_processing import (
 
 
 def process(job: Dict[str, Any]) -> Tuple[bool, str]:
-    """Process Group Dependencies job type.
+    """Process Group Sprint Dependency job type.
     
     Args:
         job: Job payload dictionary
@@ -56,51 +57,36 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     pi_start_date = current_pi_obj.get("start_date")
     pi_end_date = current_pi_obj.get("end_date")
     
-    # Get current date
-    current_date = datetime.now(timezone.utc).date().isoformat()
-
-    # Fetch inbound and outbound dependencies for the group
-    inbound_formatted, outbound_formatted, inbound_count, outbound_count = get_group_dependencies_for_analysis(
+    # Fetch sprint dependencies for the group
+    dependencies_formatted = get_group_sprint_dependencies_for_analysis(
         client=client,
-        pi=pi,
         group_name=group_name,
     )
-    
-    # Validate that we have dependencies to analyze
-    if inbound_count == 0 or outbound_count == 0:
-        error_msg = f"No dependencies found: inbound={inbound_count}, outbound={outbound_count}"
-        print(f"❌ {error_msg}")
-        return False, error_msg
+
+    # Fetch active sprint child issues by epic for the group
+    stories_by_epic_formatted = get_group_active_sprint_stories_by_epic_for_analysis(
+        client=client,
+        group_name=group_name,
+    )
 
     # Fetch prompt with error checking
     prompt_text, prompt_error = get_prompt_with_error_check(
         client=client,
         email_address="GroupAgent",
-        prompt_name="Group Dependencies",
-        job_type="Group Dependencies",
+        prompt_name="Group Sprint Dependency",
+        job_type="Group Sprint Dependency",
         job_id=int(job_id) if job_id is not None else None,
     )
     
     if prompt_error:
         return False, prompt_error
 
-    # Build formatted input with header (Group, PI, dates, current date)
-    parts = ["=== GROUP DEPENDENCIES DATA ==="]
-    parts.append(f"Group: {group_name}")
-    parts.append(f"PI: {pi}")
-    if pi_start_date:
-        parts.append(f"PI Start Date: {pi_start_date}")
-    if pi_end_date:
-        parts.append(f"PI End Date: {pi_end_date}")
-    parts.append(f"Current Date: {current_date}")
+    # Build formatted input - dependencies_formatted already includes header and all data
+    parts = [dependencies_formatted]
     parts.append("")
     
-    # Add inbound dependencies
-    parts.append(inbound_formatted)
-    parts.append("")
-    
-    # Add outbound dependencies
-    parts.append(outbound_formatted)
+    # Add child issues by epic data
+    parts.append(stories_by_epic_formatted)
     parts.append("")
     
     # Add prompt (already includes markers from get_prompt_with_error_check)
@@ -113,11 +99,11 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
         client.patch_agent_job(int(job_id), {"input_sent": formatted})
 
     # Call dedicated agent LLM processing endpoint
-    print(f"📤 Calling LLM for Group Dependencies (input: {len(formatted)} chars)")
+    print(f"📤 Calling LLM for Group Sprint Dependency (input: {len(formatted)} chars)")
     ok, llm_answer, _raw = call_agent_llm_process(
         client=client,
         prompt=formatted,
-        job_type="Group Dependencies",
+        job_type="Group Sprint Dependency",
         job_id=int(job_id) if job_id is not None else None,
         metadata={"group_name": group_name, "pi_name": pi},
     )
@@ -137,8 +123,8 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
         team_name=None,  # Group cards use group_name instead
         job_id=int(job_id) if job_id is not None else None,
         card_config={
-            "card_name": "Group Dependencies Analysis",
-            "card_type": "Group Dependencies",
+            "card_name": "Group Sprint Dependency Analysis",
+            "card_type": "Group Sprint Dependency",
             "priority": "High",
             "source": "Group",
         },
@@ -172,7 +158,7 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
 
     # Create detailed result text with full LLM response (like other jobs)
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-    result_text = f"""Group Dependencies Analysis Completed
+    result_text = f"""Group Sprint Dependency Analysis Completed
 
 Group: {group_name}
 PI: {pi}

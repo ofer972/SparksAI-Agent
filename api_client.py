@@ -497,6 +497,57 @@ class APIClient:
         )
         return resp.status_code, self._safe_json(resp)
 
+    def get_active_sprint_epic_dependencies(self, group_name: str) -> Tuple[int, Any]:
+        """Get active sprint epic dependencies for a group.
+        
+        Args:
+            group_name: Group name to get active sprint epic dependencies for
+            
+        Returns:
+            Tuple of (status_code, response_data)
+            Response structure: {
+                "success": true,
+                "data": {
+                    "dependencies": [...],
+                    "count": int,
+                    "isGroup": true,
+                    "group_name": str,
+                    "teams_in_group": [...]
+                }
+            }
+        """
+        resp = requests.get(
+            self._url("/api/v1/issues/active-sprint-epic-dependencies"),
+            params={"team_name": group_name, "isGroup": "true"},
+            headers=self._headers(),
+            timeout=self.timeout_seconds,
+        )
+        return resp.status_code, self._safe_json(resp)
+
+    def get_active_sprint_stories_by_epic(self, group_name: str) -> Tuple[int, Any]:
+        """Get active sprint child issues by epic for a group.
+        
+        Args:
+            group_name: Group name to get active sprint child issues by epic for
+            
+        Returns:
+            Tuple of (status_code, response_data)
+            Response structure: {
+                "success": true,
+                "data": [...],
+                "count": int,
+                "isGroup": false,
+                "team_name": null
+            }
+        """
+        resp = requests.get(
+            self._url("/api/v1/issues/active-sprint-stories-by-epic"),
+            params={"team_name": group_name, "isGroup": "true"},
+            headers=self._headers(),
+            timeout=self.timeout_seconds,
+        )
+        return resp.status_code, self._safe_json(resp)
+
     def get_epics_by_pi(self, pi: str) -> Tuple[int, Any]:
         """Get epics by PI with dependency metrics.
         

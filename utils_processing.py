@@ -40,6 +40,8 @@ from utils_data_fetching import (
     get_pi_burndown_for_analysis,
     get_pi_dependencies_for_analysis,
     get_group_dependencies_for_analysis,
+    get_group_sprint_dependencies_for_analysis,
+    get_group_active_sprint_stories_by_epic_for_analysis,
     get_pi_planning_gaps_for_analysis,
 )
 
@@ -85,6 +87,8 @@ __all__ = [
     "get_pi_burndown_for_analysis",
     "get_pi_dependencies_for_analysis",
     "get_group_dependencies_for_analysis",
+    "get_group_sprint_dependencies_for_analysis",
+    "get_group_active_sprint_stories_by_epic_for_analysis",
     "get_pi_planning_gaps_for_analysis",
     # LLM processing and extraction
     "clean_recommendation_text",

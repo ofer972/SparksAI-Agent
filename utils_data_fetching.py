@@ -1023,6 +1023,126 @@ def get_group_dependencies_for_analysis(
     return inbound_formatted, outbound_formatted, inbound_count, outbound_count
 
 
+def get_group_sprint_dependencies_for_analysis(
+    client: APIClient,
+    group_name: str,
+) -> str:
+    """
+    Fetch active sprint epic dependencies for a group and format for LLM analysis.
+    
+    Args:
+        client: APIClient instance
+        group_name: Group name to get active sprint epic dependencies for
+        
+    Returns:
+        Formatted string with:
+        - Group name
+        - Teams in group list
+        - Description text
+        - Formatted table with dependencies data
+        Returns error message if fetch fails or data is empty.
+    """
+    from utils_formatting import format_table
+    
+    status_code, response = client.get_active_sprint_epic_dependencies(group_name)
+    
+    if status_code != 200:
+        return f"=== GROUP SPRINT DEPENDENCY DATA ===\nGroup: {group_name}\n⚠️ Failed to fetch: HTTP {status_code}\n"
+    
+    # Extract data from response structure
+    if not isinstance(response, dict) or not response.get("success"):
+        return f"=== GROUP SPRINT DEPENDENCY DATA ===\nGroup: {group_name}\n⚠️ Invalid response format\n"
+    
+    data = response.get("data", {})
+    if not isinstance(data, dict):
+        return f"=== GROUP SPRINT DEPENDENCY DATA ===\nGroup: {group_name}\n⚠️ Invalid response format\n"
+    
+    # Extract group name and teams from response
+    response_group_name = data.get("group_name", group_name)
+    teams_in_group = data.get("teams_in_group", [])
+    dependencies = data.get("dependencies", [])
+    
+    # Build formatted output
+    parts = [f"=== GROUP SPRINT DEPENDENCY DATA ==="]
+    parts.append(f"Group: {response_group_name}")
+    parts.append("")
+    
+    # Add teams in group
+    if teams_in_group and isinstance(teams_in_group, list):
+        parts.append("Teams in Group:")
+        for team in teams_in_group:
+            parts.append(f"- {team}")
+    else:
+        parts.append("Teams in Group: No teams found")
+    parts.append("")
+    
+    # Add description
+    parts.append("List of epics owned by the group that have Dependent child issues in the active sprint:")
+    parts.append("")
+    
+    # Add formatted table with dependencies
+    if dependencies and isinstance(dependencies, list) and len(dependencies) > 0:
+        table = format_table(dependencies, max_width=50)
+        if table:
+            parts.append(table)
+        else:
+            parts.append("No dependency data available in table format")
+    else:
+        parts.append("No dependencies found")
+    
+    return "\n".join(parts)
+
+
+def get_group_active_sprint_stories_by_epic_for_analysis(
+    client: APIClient,
+    group_name: str,
+) -> str:
+    """
+    Fetch active sprint child issues by epic for a group and format for LLM analysis.
+    
+    Args:
+        client: APIClient instance
+        group_name: Group name to get active sprint child issues by epic for
+        
+    Returns:
+        Formatted string with:
+        - Description text
+        - Formatted table with child issues data
+        Returns error message if fetch fails or data is empty.
+    """
+    from utils_formatting import format_table
+    
+    status_code, response = client.get_active_sprint_stories_by_epic(group_name)
+    
+    if status_code != 200:
+        return f"List of all epics that are in progress that have child issues in the active sprint and the list of child issues in each epic:\n⚠️ Failed to fetch: HTTP {status_code}\n"
+    
+    # Extract data from response structure
+    if not isinstance(response, dict) or not response.get("success"):
+        return f"List of all epics that are in progress that have child issues in the active sprint and the list of child issues in each epic:\n⚠️ Invalid response format\n"
+    
+    data = response.get("data", [])
+    
+    # Build formatted output
+    parts = []
+    
+    # Add description
+    parts.append("List of all epics that are in progress that have child issues in the active sprint and the list of child issues in each epic:")
+    parts.append("")
+    
+    # Add formatted table with child issues
+    if data and isinstance(data, list) and len(data) > 0:
+        table = format_table(data, max_width=70)
+        if table:
+            parts.append(table)
+        else:
+            parts.append("No child issue data available in table format")
+    else:
+        parts.append("No child issues found")
+    
+    return "\n".join(parts)
+
+
 def get_pi_planning_gaps_for_analysis(
     client: APIClient,
     pi: str,
