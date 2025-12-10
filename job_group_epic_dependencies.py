@@ -76,7 +76,7 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     prompt_text, prompt_error = get_prompt_with_error_check(
         client=client,
         email_address="GroupAgent",
-        prompt_name="Group Epic Dependencies",
+        prompt_name="Group Epic Dependency",
         job_type="Group Epic Dependencies",
         job_id=int(job_id) if job_id is not None else None,
     )
@@ -186,4 +186,7 @@ LLM Response Length: {len(llm_answer)} characters
 {llm_answer}
 """
     return True, result_text
+
+
+
 
