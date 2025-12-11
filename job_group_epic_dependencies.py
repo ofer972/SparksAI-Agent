@@ -70,7 +70,7 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     if inbound_count == 0 or outbound_count == 0:
         error_msg = f"No dependencies found: inbound={inbound_count}, outbound={outbound_count}"
         print(f"❌ {error_msg}")
-        return False, error_msg
+        return True, error_msg
 
     # Fetch prompt with error checking
     prompt_text, prompt_error = get_prompt_with_error_check(
