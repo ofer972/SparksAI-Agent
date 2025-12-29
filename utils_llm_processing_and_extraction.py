@@ -446,139 +446,111 @@ def process_llm_response_and_save_ai_card(
     if raw_json_string:
         card_payload["information_json"] = raw_json_string
     
-    # Upsert card based on type and extract card_id
+    # Determine insight_type for unified endpoint
+    if card_type == "PI":
+        insight_type = "pi"
+    elif card_type == "Team":
+        insight_type = "group" if group_name is not None else "team"
+    else:
+        insight_type = "team"  # Default fallback
+    
+    # Upsert card using unified endpoint
     upsert_done = False
     card_id = None
-    if card_type == "PI":
-        sc, cards = client.list_pi_ai_cards()
-        if sc == 200 and isinstance(cards, dict):
-            # Extract cards list from response structure: {"success": true, "data": {"cards": [...]}}
-            data = cards.get("data") or {}
-            items = data.get("cards") if isinstance(data, dict) else (cards if isinstance(cards, list) else [])
-            if isinstance(items, list):
-                for c in items:
-                    try:
-                        same_date = str(c.get("date", ""))[:10] == today
-                        # Normalize team_name for comparison (handles None vs "" mismatch)
+    
+    # Build filter parameters for list query
+    list_params = {
+        "insight_type": insight_type,
+        "date": today,
+        "card_name": card_payload["card_name"]
+    }
+    
+    # Add identifier filter based on insight_type
+    if insight_type == "pi":
+        if "pi" in card_payload:
+            list_params["pi"] = card_payload["pi"]
+    elif insight_type == "group":
+        if "group_name" in card_payload:
+            list_params["group_name"] = card_payload["group_name"]
+    else:  # team
+        if "team_name" in card_payload and card_payload["team_name"]:
+            list_params["team_name"] = card_payload["team_name"]
+    
+    sc, cards = client.list_ai_insights(**list_params)
+    if sc == 200 and isinstance(cards, dict):
+        # Extract cards list from response structure: {"success": true, "data": {"cards": [...]}}
+        data = cards.get("data") or {}
+        items = data.get("cards") if isinstance(data, dict) else (cards if isinstance(cards, list) else [])
+        if isinstance(items, list):
+            for c in items:
+                try:
+                    # Backend already filters by date and card_name, but keep as safety check
+                    same_date = str(c.get("date", ""))[:10] == today
+                    same_card_name = c.get("card_name") == card_payload["card_name"]
+                    
+                    if not same_date or not same_card_name:
+                        continue
+                    
+                    # Match based on insight_type
+                    if insight_type == "pi":
+                        # Match on pi
+                        if c.get("pi") != card_payload.get("pi"):
+                            continue
+                    elif insight_type == "group":
+                        # Match on group_name
+                        existing_group_name = c.get("group_name")
+                        payload_group_name = card_payload.get("group_name")
+                        if existing_group_name != payload_group_name:
+                            continue
+                    else:  # team
+                        # Match on team_name
                         existing_team_name = c.get("team_name") or ""
                         payload_team_name = card_payload.get("team_name") or ""
-                        
-                        if same_date and existing_team_name == payload_team_name and c.get("pi") == card_payload.get("pi") and c.get("card_name") == card_payload["card_name"]:
-                            # Extract card ID with validation
-                            card_id_raw = c.get("id")
-                            if card_id_raw is None:
-                                print(f"⚠️ WARNING: Existing card found but id is None, skipping")
-                                continue
-                            try:
-                                card_id = int(card_id_raw)
-                            except (ValueError, TypeError) as e:
-                                print(f"⚠️ WARNING: Cannot convert card id to int: {card_id_raw}, error: {e}")
-                                continue
-                            
-                            # Patch existing
-                            psc, presp = client.patch_pi_ai_card(card_id, card_payload)
-                            if psc < 300:
-                                # Patch succeeded, card_id is already set
-                                upsert_done = True
-                                break
-                            else:
-                                print(f"⚠️ Patch pi-ai-card failed: {psc} {presp}")
-                                # Don't set upsert_done, will try to create new
-                    except Exception as e:
-                        # Log exception instead of silently swallowing
-                        print(f"⚠️ WARNING: Exception in PI card upsert loop: {e}")
+                        if existing_team_name != payload_team_name:
+                            continue
+                    
+                    # All conditions matched - this is the card to update
+                    # Extract card ID with validation
+                    card_id_raw = c.get("id")
+                    if card_id_raw is None:
+                        print(f"⚠️ WARNING: Existing card found but id is None, skipping")
                         continue
-        if not upsert_done:
-            csc, cresp = client.create_pi_ai_card(card_payload)
-            if csc < 300 and isinstance(cresp, dict):
-                # Extract from response.data.card.id structure
-                card_id = cresp.get("data", {}).get("card", {}).get("id")
-                if card_id is None:
-                    # Log the actual response structure for debugging
-                    print(f"⚠️ WARNING: Card ID not found in response structure")
-                    print(f"   Response keys: {list(cresp.keys()) if isinstance(cresp, dict) else 'not a dict'}")
-                    if isinstance(cresp, dict) and "data" in cresp:
-                        print(f"   Data keys: {list(cresp['data'].keys()) if isinstance(cresp['data'], dict) else 'not a dict'}")
-                        if isinstance(cresp['data'], dict) and "card" in cresp['data']:
-                            print(f"   Card keys: {list(cresp['data']['card'].keys()) if isinstance(cresp['data']['card'], dict) else 'not a dict'}")
-            elif csc >= 300:
-                print(f"⚠️ Create pi-ai-card failed: {csc} {cresp}")
-    elif card_type == "Team":
-        # Use query parameters to filter on backend (more efficient)
-        sc, cards = client.list_team_ai_cards(date=today, card_name=card_payload["card_name"])
-        if sc == 200 and isinstance(cards, dict):
-            # Backend returns: {"success": true, "data": {"cards": [...]}}
-            data = cards.get("data") or {}
-            items = data.get("cards") if isinstance(data, dict) else []
-            if isinstance(items, list):
-                for c in items:
                     try:
-                        # Backend already filters by date and card_name, but keep as safety check
-                        same_date = str(c.get("date", ""))[:10] == today
-                        same_card_name = c.get("card_name") == card_payload["card_name"]
-                        
-                        if not same_date or not same_card_name:
-                            continue
-                        
-                        # For Group cards (when group_name is provided), match on group_name
-                        if group_name is not None:
-                            existing_group_name = c.get("group_name")
-                            existing_team_name = c.get("team_name")  # Should be None for group cards
-                            payload_group_name = card_payload.get("group_name")
-                            
-                            # Skip if: different group_name OR existing card has team_name (not a group card)
-                            if existing_group_name != payload_group_name or existing_team_name is not None:
-                                continue
-                        else:
-                            # For Team cards (when group_name is None), match on team_name
-                            existing_group_name = c.get("group_name")  # Should be None for team cards
-                            existing_team_name = c.get("team_name")
-                            payload_team_name = card_payload.get("team_name")
-                            
-                            # Skip if: existing card has group_name (not a team card) OR different team_name
-                            if existing_group_name is not None or existing_team_name != payload_team_name:
-                                continue
-                        
-                        # All conditions matched - this is the card to update
-                        # Extract card ID with validation
-                        card_id_raw = c.get("id")
-                        if card_id_raw is None:
-                            print(f"⚠️ WARNING: Existing card found but id is None, skipping")
-                            continue
-                        try:
-                            card_id = int(card_id_raw)
-                        except (ValueError, TypeError) as e:
-                            print(f"⚠️ WARNING: Cannot convert card id to int: {card_id_raw}, error: {e}")
-                            continue
-                        
-                        # Patch existing
-                        psc, presp = client.patch_team_ai_card(card_id, card_payload)
-                        if psc < 300:
-                            # Patch succeeded, card_id is already set
-                            upsert_done = True
-                            break
-                        else:
-                            print(f"⚠️ Patch team-ai-card failed: {psc} {presp}")
-                            # Don't set upsert_done, will try to create new
-                    except Exception as e:
-                        # Log exception instead of silently swallowing
-                        print(f"⚠️ WARNING: Exception in Team card upsert loop: {e}")
+                        card_id = int(card_id_raw)
+                    except (ValueError, TypeError) as e:
+                        print(f"⚠️ WARNING: Cannot convert card id to int: {card_id_raw}, error: {e}")
                         continue
-        if not upsert_done:
-            csc, cresp = client.create_team_ai_card(card_payload)
-            if csc < 300 and isinstance(cresp, dict):
-                # Extract from response.data.card.id structure
-                card_id = cresp.get("data", {}).get("card", {}).get("id")
-                if card_id is None:
-                    # Log the actual response structure for debugging
-                    print(f"⚠️ WARNING: Card ID not found in response structure")
-                    print(f"   Response keys: {list(cresp.keys()) if isinstance(cresp, dict) else 'not a dict'}")
-                    if isinstance(cresp, dict) and "data" in cresp:
-                        print(f"   Data keys: {list(cresp['data'].keys()) if isinstance(cresp['data'], dict) else 'not a dict'}")
-                        if isinstance(cresp['data'], dict) and "card" in cresp['data']:
-                            print(f"   Card keys: {list(cresp['data']['card'].keys()) if isinstance(cresp['data']['card'], dict) else 'not a dict'}")
-            elif csc >= 300:
-                print(f"⚠️ Create team-ai-card failed: {csc} {cresp}")
+                    
+                    # Patch existing using unified endpoint
+                    psc, presp = client.patch_ai_insight(card_id, card_payload)
+                    if psc < 300:
+                        # Patch succeeded, card_id is already set
+                        upsert_done = True
+                        break
+                    else:
+                        print(f"⚠️ Patch ai-insight failed: {psc} {presp}")
+                        # Don't set upsert_done, will try to create new
+                except Exception as e:
+                    # Log exception instead of silently swallowing
+                    print(f"⚠️ WARNING: Exception in card upsert loop: {e}")
+                    continue
+    
+    if not upsert_done:
+        # Create new card using unified endpoint
+        csc, cresp = client.create_ai_insight(insight_type, card_payload)
+        if csc < 300 and isinstance(cresp, dict):
+            # Extract from response.data.card.id structure
+            card_id = cresp.get("data", {}).get("card", {}).get("id")
+            if card_id is None:
+                # Log the actual response structure for debugging
+                print(f"⚠️ WARNING: Card ID not found in response structure")
+                print(f"   Response keys: {list(cresp.keys()) if isinstance(cresp, dict) else 'not a dict'}")
+                if isinstance(cresp, dict) and "data" in cresp:
+                    print(f"   Data keys: {list(cresp['data'].keys()) if isinstance(cresp['data'], dict) else 'not a dict'}")
+                    if isinstance(cresp['data'], dict) and "card" in cresp['data']:
+                        print(f"   Card keys: {list(cresp['data']['card'].keys()) if isinstance(cresp['data']['card'], dict) else 'not a dict'}")
+        elif csc >= 300:
+            print(f"⚠️ Create ai-insight failed: {csc} {cresp}")
     
     # Short log of the created card insight
     desc_preview = (card_payload["description"] or "")[:120]

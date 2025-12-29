@@ -657,6 +657,73 @@ class APIClient:
         )
         return resp.status_code, self._safe_json(resp)
 
+    # Unified AI Insights methods
+    def create_ai_insight(self, insight_type: str, body: Dict[str, Any]) -> Tuple[int, Any]:
+        """Create AI insight card using unified endpoint.
+        
+        Args:
+            insight_type: 'team', 'group', or 'pi'
+            body: Card data (must include appropriate identifier field)
+        """
+        payload = body.copy()
+        payload["insight_type"] = insight_type
+        resp = requests.post(
+            self._url("/api/v1/ai-insights"),
+            headers=self._headers(),
+            json=payload,
+            timeout=self.timeout_seconds,
+        )
+        return resp.status_code, self._safe_json(resp)
+
+    def list_ai_insights(self, insight_type: str | None = None, date: str | None = None, 
+                        card_name: str | None = None, team_name: str | None = None,
+                        group_name: str | None = None, pi: str | None = None,
+                        limit: int = 100) -> Tuple[int, Any]:
+        """List AI insights with optional filtering using unified endpoint.
+        
+        Args:
+            insight_type: Optional filter by type ('team', 'group', 'pi')
+            date: Optional date filter
+            card_name: Optional card name filter
+            team_name: Optional team name filter
+            group_name: Optional group name filter
+            pi: Optional PI name filter
+            limit: Maximum number of cards to return (default: 100)
+        """
+        params = {}
+        if insight_type:
+            params["insight_type"] = insight_type
+        if date:
+            params["date"] = date
+        if card_name:
+            params["card_name"] = card_name
+        if team_name:
+            params["team_name"] = team_name
+        if group_name:
+            params["group_name"] = group_name
+        if pi:
+            params["pi"] = pi
+        if limit:
+            params["limit"] = limit
+        
+        resp = requests.get(
+            self._url("/api/v1/ai-insights"),
+            headers=self._headers(),
+            params=params if params else None,
+            timeout=self.timeout_seconds,
+        )
+        return resp.status_code, self._safe_json(resp)
+
+    def patch_ai_insight(self, card_id: int, body: Dict[str, Any]) -> Tuple[int, Any]:
+        """Update AI insight card using unified endpoint."""
+        resp = requests.patch(
+            self._url(f"/api/v1/ai-insights/{card_id}"),
+            headers=self._headers(),
+            json=body,
+            timeout=self.timeout_seconds,
+        )
+        return resp.status_code, self._safe_json(resp)
+
     def get_teams_in_group_by_name(self, group_name: str) -> Tuple[int, Any]:
         """Get all teams in a group by group name.
         
