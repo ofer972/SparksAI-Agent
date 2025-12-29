@@ -452,10 +452,11 @@ def process_llm_response_and_save_ai_card(
     upsert_done = False
     card_id = None
     
-    # Build filter parameters for list query - filter by insight_type (actual name), date, and card_name
+    # Build filter parameters for list query - filter by date, insight_type, and identifiers
+    # Aligns with unique index: (date, insight_type, team_name, pi, group_name)
     list_params = {
         "date": today,
-        "card_name": card_payload["card_name"]
+        "insight_type": card_payload.get("insight_type")
     }
     
     # Add identifier filters based on what's in the payload
@@ -474,11 +475,11 @@ def process_llm_response_and_save_ai_card(
         if isinstance(items, list):
             for c in items:
                 try:
-                    # Backend already filters by date and card_name, but keep as safety check
+                    # Match based on unique index fields: date, insight_type, and identifiers
                     same_date = str(c.get("date", ""))[:10] == today
-                    same_card_name = c.get("card_name") == card_payload["card_name"]
+                    same_insight_type = c.get("insight_type") == card_payload.get("insight_type")
                     
-                    if not same_date or not same_card_name:
+                    if not same_date or not same_insight_type:
                         continue
                     
                     # Match based on identifiers - all must match
