@@ -19,6 +19,7 @@ from utils_processing import (
 def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     client = APIClient()
     job_id = job.get("job_id") or job.get("id")
+    job_type = job.get("job_type", "Sprint Goal")
     team_name = job.get("team_name")
     if not team_name:
         return False, "Missing team_name in job payload"
@@ -106,9 +107,9 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
         llm_answer=llm_answer,
         team_name=team_name,
         job_id=int(job_id) if job_id is not None else None,
+        job_type=job_type,
         card_config={
             "card_name": "Sprint Goal Analysis",
-            "card_type": "Sprint Goal",
             "priority": "High",
             "source": "Sprint Goal",
         },

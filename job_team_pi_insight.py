@@ -43,6 +43,7 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     client = APIClient()
 
     job_id = job.get("job_id") or job.get("id")
+    job_type = job.get("job_type", "Team PI Insight")
     pi = _extract_pi(job)
     if not pi:
         return False, "Missing PI in job payload"
@@ -109,11 +110,11 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
         job_id=int(job_id) if job_id is not None else None,
         card_config={
             "card_name": "Team PI Insight",
-            "card_type": "Team PI Insight",
             "priority": "Critical",
             "source": "PI",
-            # Note: No "pi" field - team-ai-cards don't have pi field
+            "pi": pi,  # Team PI Insight requires both team_name and pi
         },
+        job_type=job_type,
         card_type="Team",  # Use Team AI cards endpoint
         extract_content_fn=extract_review_section,
     )

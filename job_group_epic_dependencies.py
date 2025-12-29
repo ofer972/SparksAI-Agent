@@ -27,6 +27,7 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     client = APIClient()
 
     job_id = job.get("job_id") or job.get("id")
+    job_type = job.get("job_type", "Group Epic Dependencies")
     
     group_name = job.get("group_name")
     if not group_name:
@@ -138,10 +139,10 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
         job_id=int(job_id) if job_id is not None else None,
         card_config={
             "card_name": "Group Epic Dependencies Analysis",
-            "card_type": "Group Epic Dependencies",
             "priority": "High",
             "source": "Group",
         },
+        job_type=job_type,
         card_type="Team",  # Use Team AI cards endpoint (which accepts group_name)
         extract_content_fn=extract_review_section,
         group_name=group_name,  # Pass group_name to be included in card payload

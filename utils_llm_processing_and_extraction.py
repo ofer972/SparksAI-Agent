@@ -374,8 +374,9 @@ def process_llm_response_and_save_ai_card(
     llm_answer: str,
     team_name: str | None,
     job_id: int | None,
+    job_type: str,  # The insight_type from job (e.g., "Daily Progress", "PI Sync")
     card_config: Dict[str, Any],
-    card_type: str,  # "PI" or "Team"
+    card_type: str,  # "PI" or "Team" - for determining endpoint
     extract_content_fn: Callable[[str], str | None] = extract_pi_sync_review,
     group_name: str | None = None,  # Optional group_name for Group cards
 ) -> Tuple[str, str, str, int]:
@@ -387,7 +388,8 @@ def process_llm_response_and_save_ai_card(
         llm_answer: Full LLM response text
         team_name: Team name from job (used for Team cards, ignored if group_name is provided)
         job_id: Optional job ID
-        card_config: Dict with keys: card_name, card_type, priority, source, pi (if PI card)
+        job_type: The insight_type from the job payload (e.g., "Daily Progress", "PI Sync")
+        card_config: Dict with keys: card_name, priority, source, pi (if PI card)
         card_type: "PI" for pi-ai-cards, "Team" for team-ai-cards
         extract_content_fn: Function to extract description from LLM response (default: extract_pi_sync_review)
         group_name: Optional group_name for Group cards (if provided, used instead of team_name)
@@ -425,7 +427,7 @@ def process_llm_response_and_save_ai_card(
     card_payload = {
         "team_name": normalized_team_name,
         "card_name": card_config.get("card_name"),
-        "card_type": card_config.get("card_type"),
+        "insight_type": job_type,  # Use job_type parameter - matches insight_types.insight_type
         "description": description[:2000],  # Truncate description if too long
         "date": today,
         "priority": card_config.get("priority", "Critical"),
@@ -446,35 +448,23 @@ def process_llm_response_and_save_ai_card(
     if raw_json_string:
         card_payload["information_json"] = raw_json_string
     
-    # Determine insight_type for unified endpoint
-    if card_type == "PI":
-        insight_type = "pi"
-    elif card_type == "Team":
-        insight_type = "group" if group_name is not None else "team"
-    else:
-        insight_type = "team"  # Default fallback
-    
     # Upsert card using unified endpoint
     upsert_done = False
     card_id = None
     
-    # Build filter parameters for list query
+    # Build filter parameters for list query - filter by insight_type (actual name), date, and card_name
     list_params = {
-        "insight_type": insight_type,
         "date": today,
         "card_name": card_payload["card_name"]
     }
     
-    # Add identifier filter based on insight_type
-    if insight_type == "pi":
-        if "pi" in card_payload:
-            list_params["pi"] = card_payload["pi"]
-    elif insight_type == "group":
-        if "group_name" in card_payload:
-            list_params["group_name"] = card_payload["group_name"]
-    else:  # team
-        if "team_name" in card_payload and card_payload["team_name"]:
-            list_params["team_name"] = card_payload["team_name"]
+    # Add identifier filters based on what's in the payload
+    if "pi" in card_payload and card_payload["pi"]:
+        list_params["pi"] = card_payload["pi"]
+    if "group_name" in card_payload and card_payload["group_name"]:
+        list_params["group_name"] = card_payload["group_name"]
+    if "team_name" in card_payload and card_payload["team_name"]:
+        list_params["team_name"] = card_payload["team_name"]
     
     sc, cards = client.list_ai_insights(**list_params)
     if sc == 200 and isinstance(cards, dict):
@@ -491,23 +481,15 @@ def process_llm_response_and_save_ai_card(
                     if not same_date or not same_card_name:
                         continue
                     
-                    # Match based on insight_type
-                    if insight_type == "pi":
-                        # Match on pi
-                        if c.get("pi") != card_payload.get("pi"):
-                            continue
-                    elif insight_type == "group":
-                        # Match on group_name
-                        existing_group_name = c.get("group_name")
-                        payload_group_name = card_payload.get("group_name")
-                        if existing_group_name != payload_group_name:
-                            continue
-                    else:  # team
-                        # Match on team_name
-                        existing_team_name = c.get("team_name") or ""
-                        payload_team_name = card_payload.get("team_name") or ""
-                        if existing_team_name != payload_team_name:
-                            continue
+                    # Match based on identifiers - all must match
+                    if c.get("pi") != card_payload.get("pi"):
+                        continue
+                    if c.get("group_name") != card_payload.get("group_name"):
+                        continue
+                    existing_team_name = c.get("team_name") or ""
+                    payload_team_name = card_payload.get("team_name") or ""
+                    if existing_team_name != payload_team_name:
+                        continue
                     
                     # All conditions matched - this is the card to update
                     # Extract card ID with validation
@@ -537,7 +519,7 @@ def process_llm_response_and_save_ai_card(
     
     if not upsert_done:
         # Create new card using unified endpoint
-        csc, cresp = client.create_ai_insight(insight_type, card_payload)
+        csc, cresp = client.create_ai_insight(card_payload)
         if csc < 300 and isinstance(cresp, dict):
             # Extract from response.data.card.id structure
             card_id = cresp.get("data", {}).get("card", {}).get("id")
@@ -555,7 +537,7 @@ def process_llm_response_and_save_ai_card(
     # Short log of the created card insight
     desc_preview = (card_payload["description"] or "")[:120]
     print(
-        f"🗂️ Card insight: name='{card_payload['card_name']}' type='{card_payload['card_type']}' priority='{card_payload['priority']}' preview='{desc_preview}'"
+        f"🗂️ Card insight: name='{card_payload['card_name']}' type='{card_payload.get('insight_type', 'N/A')}' priority='{card_payload['priority']}' preview='{desc_preview}'"
     )
     
     if card_id is not None:

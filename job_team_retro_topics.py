@@ -20,6 +20,7 @@ from utils_processing import (
 def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     client = APIClient()
     job_id = job.get("job_id") or job.get("id")
+    job_type = job.get("job_type", "Team Retro Topics")
     team_name = job.get("team_name")
     if not team_name:
         return False, "Missing team_name in job payload"
@@ -105,10 +106,10 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
         job_id=int(job_id) if job_id is not None else None,
         card_config={
             "card_name": "Team Retro Topics",
-            "card_type": "Team Retro Topics",
             "priority": "High",
             "source": "Team Retro Topics",
         },
+        job_type=job_type,
         card_type="Team",
         extract_content_fn=extract_review_section,
     )

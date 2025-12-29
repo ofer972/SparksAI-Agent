@@ -38,6 +38,7 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     client = APIClient()
 
     job_id = job.get("job_id") or job.get("id")
+    job_type = job.get("job_type", "PI Sync")
     pi = _extract_pi(job)
     if not pi:
         return False, "Missing PI in job payload"
@@ -106,10 +107,10 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
         llm_answer=llm_answer,
         team_name=job.get("team_name"),
         job_id=int(job_id) if job_id is not None else None,
+        job_type=job_type,
         card_config={
             "pi": pi,
             "card_name": "PI Sync Review",
-            "card_type": "PI Sync",
             "priority": "Critical",
             "source": "PI",
         },

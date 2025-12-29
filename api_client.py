@@ -658,19 +658,16 @@ class APIClient:
         return resp.status_code, self._safe_json(resp)
 
     # Unified AI Insights methods
-    def create_ai_insight(self, insight_type: str, body: Dict[str, Any]) -> Tuple[int, Any]:
+    def create_ai_insight(self, body: Dict[str, Any]) -> Tuple[int, Any]:
         """Create AI insight card using unified endpoint.
         
         Args:
-            insight_type: 'team', 'group', or 'pi'
-            body: Card data (must include appropriate identifier field)
+            body: Card data (must include insight_type and appropriate identifier fields)
         """
-        payload = body.copy()
-        payload["insight_type"] = insight_type
         resp = requests.post(
             self._url("/api/v1/ai-insights"),
             headers=self._headers(),
-            json=payload,
+            json=body,
             timeout=self.timeout_seconds,
         )
         return resp.status_code, self._safe_json(resp)
