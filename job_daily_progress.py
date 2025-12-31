@@ -93,7 +93,6 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
         job_type=job_type,
         card_config={
             "card_name": "Daily Progress Review",
-            "priority": "Critical",
             "source": "Daily Progress",
         },
         card_type="Team",
@@ -101,7 +100,7 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     )
     
     # Extract recommendations_json from LLM response for recommendations saving
-    _, _, recommendations_json, _ = extract_text_and_json(llm_answer)
+    _, _, recommendations_json, _, _ = extract_text_and_json(llm_answer)
 
     # Extract and create recommendations
     log(int(job_id) if job_id is not None else None, "📋 EXTRACTING AND SAVING RECOMMENDATIONS")

@@ -44,6 +44,21 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     if not pi:
         return False, "Missing PI in job payload"
 
+    # Extract team_name or group_name from job and determine is_group flag
+    team_name = job.get("team_name")
+    group_name = job.get("group_name")
+    
+    # Determine which one to use
+    if group_name:
+        team_param = group_name
+        is_group = True
+    elif team_name:
+        team_param = team_name
+        is_group = False
+    else:
+        team_param = None
+        is_group = False
+
     # Fetch transcript using new unified function
     transcript_formatted = get_transcripts_for_analysis(
         client=client,
@@ -57,7 +72,8 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     _, pi_status_obj, burndown_obj = fetch_pi_data_for_analysis(
         client=client,
         pi=pi,
-        team_name=None,  # PI Sync doesn't filter by team_name
+        team_name=team_param,
+        is_group=is_group,
         include_transcript=False,  # Already fetched above
     )
 
@@ -107,21 +123,21 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     description, full_info_truncated, raw_json_string, card_id = process_llm_response_and_save_ai_card(
         client=client,
         llm_answer=llm_answer,
-        team_name=job.get("team_name"),
+        team_name=team_name,
         job_id=int(job_id) if job_id is not None else None,
         job_type=job_type,
         card_config={
             "pi": pi,
             "card_name": "PI Sync Review",
-            "priority": "Critical",
             "source": "PI",
         },
         card_type="PI",
         extract_content_fn=extract_review_section,
+        group_name=group_name,
     )
     
     # Extract recommendations_json from LLM response for recommendations saving
-    _, _, recommendations_json, _ = extract_text_and_json(llm_answer)
+    _, _, recommendations_json, _, _ = extract_text_and_json(llm_answer)
 
     # Extract and create recommendations
     log(int(job_id) if job_id is not None else None, "📋 EXTRACTING AND SAVING RECOMMENDATIONS")

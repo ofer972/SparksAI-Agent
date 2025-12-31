@@ -90,11 +90,27 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     if not pi:
         return False, "Missing PI in job payload"
 
+    # Extract team_name or group_name from job and determine is_group flag
+    team_name = job.get("team_name")
+    group_name = job.get("group_name")
+    
+    # Determine which one to use
+    if group_name:
+        team_param = group_name
+        is_group = True
+    elif team_name:
+        team_param = team_name
+        is_group = False
+    else:
+        team_param = None
+        is_group = False
+
     # Fetch PI status to get dates
     _, pi_status_obj, _ = fetch_pi_data_for_analysis(
         client=client,
         pi=pi,
-        team_name=None,  # PI Planning Gaps doesn't filter by team_name
+        team_name=team_param,
+        is_group=is_group,
         include_transcript=False,  # Don't need transcript
     )
     
@@ -108,6 +124,8 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     pi_status_by_team_formatted = get_pi_status_for_today_by_team_for_analysis(
         client=client,
         pi=pi,
+        team_name=team_param,
+        is_group=is_group,
     )
 
     # Fetch average sprint velocity per team and format as table
@@ -115,12 +133,16 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
         client=client,
         pi=pi,
         num_sprints=5,  # Default: last 5 sprints
+        team_name=team_param,
+        is_group=is_group,
     )
 
     # Fetch epics by PI and format as table
     epics_formatted = get_epics_by_pi_for_analysis(
         client=client,
         pi=pi,
+        team_name=team_param,
+        is_group=is_group,
     )
 
     # Fetch prompt with error checking
@@ -188,21 +210,21 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     description, full_info_truncated, raw_json_string, card_id = process_llm_response_and_save_ai_card(
         client=client,
         llm_answer=llm_answer,
-        team_name=job.get("team_name"),
+        team_name=team_name,
         job_id=int(job_id) if job_id is not None else None,
         card_config={
             "pi": pi,
             "card_name": "PI Planning Gaps Analysis",
-            "priority": "Critical",
             "source": "PI",
         },
         job_type=job_type,
         card_type="PI",
         extract_content_fn=extract_review_section,
+        group_name=group_name,
     )
     
     # Extract recommendations_json from LLM response for recommendations saving
-    _, _, recommendations_json, _ = extract_text_and_json(llm_answer)
+    _, _, recommendations_json, _, _ = extract_text_and_json(llm_answer)
 
     # Extract and create recommendations
     log(int(job_id) if job_id is not None else None, "📋 EXTRACTING AND SAVING RECOMMENDATIONS")

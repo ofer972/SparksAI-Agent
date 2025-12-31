@@ -109,10 +109,12 @@ class APIClient:
         )
         return resp.status_code, self._safe_json(resp)
 
-    def get_pi_burndown(self, pi: str, team_name: str | None = None) -> Tuple[int, Any]:
+    def get_pi_burndown(self, pi: str, team_name: str | None = None, is_group: bool = False) -> Tuple[int, Any]:
         params: Dict[str, Any] = {"pi": pi}
         if team_name:
             params["team_name"] = team_name
+        if is_group:
+            params["isGroup"] = "true"
         resp = requests.get(
             self._url("/api/v1/pis/burndown"),
             params=params,
@@ -121,12 +123,13 @@ class APIClient:
         )
         return resp.status_code, self._safe_json(resp)
 
-    def get_pi_summary_today(self, pi: str, team_name: str | None = None) -> Tuple[int, Any]:
+    def get_pi_summary_today(self, pi: str, team_name: str | None = None, is_group: bool = False) -> Tuple[int, Any]:
         """Get PI status summary for current date.
         
         Args:
             pi: PI name/identifier
-            team_name: Optional team name to filter by
+            team_name: Optional team name or group name (if is_group=true) to filter by
+            is_group: If true, team_name is treated as a group name
             
         Returns:
             Tuple of (status_code, response_data)
@@ -134,6 +137,8 @@ class APIClient:
         params: Dict[str, Any] = {"pi": pi}
         if team_name:
             params["team_name"] = team_name
+        if is_group:
+            params["isGroup"] = "true"
         resp = requests.get(
             self._url("/api/v1/pis/get-pi-status-for-today"),
             params=params,
@@ -142,11 +147,13 @@ class APIClient:
         )
         return resp.status_code, self._safe_json(resp)
 
-    def get_pi_status_for_today_by_team(self, pi: str) -> Tuple[int, Any]:
+    def get_pi_status_for_today_by_team(self, pi: str, team_name: str | None = None, is_group: bool = False) -> Tuple[int, Any]:
         """Get PI status for today by team.
         
         Args:
             pi: PI name/identifier
+            team_name: Optional team name or group name (if is_group=true) to filter by
+            is_group: If true, team_name is treated as a group name
             
         Returns:
             Tuple of (status_code, response_data)
@@ -161,9 +168,14 @@ class APIClient:
                 }
             }
         """
+        params: Dict[str, Any] = {"pi": pi}
+        if team_name:
+            params["team_name"] = team_name
+        if is_group:
+            params["isGroup"] = "true"
         resp = requests.get(
             self._url("/api/v1/pis/get-pi-status-for-today-by-team"),
-            params={"pi": pi},
+            params=params,
             headers=self._headers(),
             timeout=self.timeout_seconds,
         )
@@ -423,37 +435,51 @@ class APIClient:
         )
         return resp.status_code, self._safe_json(resp)
 
-    def get_epic_inbound_dependency_load_by_quarter(self, pi: str) -> Tuple[int, Any]:
+    def get_epic_inbound_dependency_load_by_quarter(self, pi: str, team_name: str | None = None, is_group: bool = False) -> Tuple[int, Any]:
         """Get inbound dependency load by quarter for a PI.
         
         Args:
             pi: PI name/identifier (e.g., "Q42025")
+            team_name: Optional team name or group name (if is_group=true) to filter by
+            is_group: If true, team_name is treated as a group name
             
         Returns:
             Tuple of (status_code, response_data)
             Response structure: {"success": true, "data": [...]}
         """
+        params: Dict[str, Any] = {"pi": pi}
+        if team_name:
+            params["team_name"] = team_name
+        if is_group:
+            params["isGroup"] = "true"
         resp = requests.get(
             self._url("/api/v1/issues/epic-inbound-dependency-load-by-quarter"),
-            params={"pi": pi},
+            params=params,
             headers=self._headers(),
             timeout=self.timeout_seconds,
         )
         return resp.status_code, self._safe_json(resp)
 
-    def get_epic_outbound_dependency_metrics_by_quarter(self, pi: str) -> Tuple[int, Any]:
+    def get_epic_outbound_dependency_metrics_by_quarter(self, pi: str, team_name: str | None = None, is_group: bool = False) -> Tuple[int, Any]:
         """Get outbound dependency metrics by quarter for a PI.
         
         Args:
             pi: PI name/identifier (e.g., "Q42025")
+            team_name: Optional team name or group name (if is_group=true) to filter by
+            is_group: If true, team_name is treated as a group name
             
         Returns:
             Tuple of (status_code, response_data)
             Response structure: {"success": true, "data": [...]}
         """
+        params: Dict[str, Any] = {"pi": pi}
+        if team_name:
+            params["team_name"] = team_name
+        if is_group:
+            params["isGroup"] = "true"
         resp = requests.get(
             self._url("/api/v1/issues/epic-outbound-dependency-metrics-by-quarter"),
-            params={"pi": pi},
+            params=params,
             headers=self._headers(),
             timeout=self.timeout_seconds,
         )
@@ -548,11 +574,13 @@ class APIClient:
         )
         return resp.status_code, self._safe_json(resp)
 
-    def get_epics_by_pi(self, pi: str) -> Tuple[int, Any]:
+    def get_epics_by_pi(self, pi: str, team_name: str | None = None, is_group: bool = False) -> Tuple[int, Any]:
         """Get epics by PI with dependency metrics.
         
         Args:
             pi: PI name/identifier (e.g., "Q42025")
+            team_name: Optional team name or group name (if is_group=true) to filter by
+            is_group: If true, team_name is treated as a group name
             
         Returns:
             Tuple of (status_code, response_data)
@@ -564,9 +592,14 @@ class APIClient:
                 }
             }
         """
+        params: Dict[str, Any] = {"pi": pi}
+        if team_name:
+            params["team_name"] = team_name
+        if is_group:
+            params["isGroup"] = "true"
         resp = requests.get(
             self._url("/api/v1/issues/epics-by-pi"),
-            params={"pi": pi},
+            params=params,
             headers=self._headers(),
             timeout=self.timeout_seconds,
         )

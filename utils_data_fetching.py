@@ -95,6 +95,7 @@ def fetch_pi_data_for_analysis(
     client: APIClient,
     pi: str,
     team_name: str | None = None,
+    is_group: bool = False,
     include_transcript: bool = True,
 ) -> Tuple[Dict[str, Any] | None, Dict[str, Any] | None, Dict[str, Any] | None]:
     """
@@ -103,7 +104,8 @@ def fetch_pi_data_for_analysis(
     Args:
         client: APIClient instance
         pi: PI name/identifier
-        team_name: Optional team name to pass to PI status and burndown endpoints
+        team_name: Optional team name or group name (if is_group=true) to pass to PI status and burndown endpoints
+        is_group: If true, team_name is treated as a group name
         include_transcript: Whether to fetch transcript (default: True)
     
     Returns:
@@ -126,13 +128,13 @@ def fetch_pi_data_for_analysis(
 
     # Always fetch PI status
     pi_status_obj = None
-    sc, data = client.get_pi_summary_today(pi, team_name=team_name)
+    sc, data = client.get_pi_summary_today(pi, team_name=team_name, is_group=is_group)
     if sc == 200 and isinstance(data, dict):
         pi_status_obj = data.get("data") or data
 
     # Always fetch burndown
     burndown_obj = None
-    sc, data = client.get_pi_burndown(pi, team_name=team_name)
+    sc, data = client.get_pi_burndown(pi, team_name=team_name, is_group=is_group)
     if sc == 200 and isinstance(data, dict):
         burndown_obj = data.get("data") or data
 
@@ -721,6 +723,8 @@ def get_pi_status_for_today_for_analysis(
 def get_pi_status_for_today_by_team_for_analysis(
     client: APIClient,
     pi: str,
+    team_name: str | None = None,
+    is_group: bool = False,
 ) -> str:
     """
     Fetch PI status for today by team and format as markdown table for LLM.
@@ -728,6 +732,8 @@ def get_pi_status_for_today_by_team_for_analysis(
     Args:
         client: APIClient instance
         pi: PI name/identifier
+        team_name: Optional team name or group name (if is_group=true) to filter by
+        is_group: If true, team_name is treated as a group name
         
     Returns:
         Formatted string with PI status by team as markdown table, including header.
@@ -735,7 +741,7 @@ def get_pi_status_for_today_by_team_for_analysis(
     """
     from utils_formatting import format_table
     
-    status_code, response = client.get_pi_status_for_today_by_team(pi)
+    status_code, response = client.get_pi_status_for_today_by_team(pi, team_name=team_name, is_group=is_group)
     
     if status_code != 200:
         return f"=== PI STATUS BY TEAM ===\n⚠️ Failed to fetch: HTTP {status_code}\n"
@@ -765,6 +771,8 @@ def get_average_sprint_velocity_per_team_for_analysis(
     client: APIClient,
     pi: str,
     num_sprints: int = 5,
+    team_name: str | None = None,
+    is_group: bool = False,
 ) -> str:
     """
     Fetch average sprint velocity per team and format as markdown table for LLM.
@@ -773,6 +781,8 @@ def get_average_sprint_velocity_per_team_for_analysis(
         client: APIClient instance
         pi: PI name/identifier (if provided, uses teams participating in the PI)
         num_sprints: Number of sprints to average (default: 5, max: 20)
+        team_name: Optional team name or group name (if is_group=true) to filter by
+        is_group: If true, team_name is treated as a group name
         
     Returns:
         Formatted string with average sprint velocity by team as markdown table, including header.
@@ -783,6 +793,8 @@ def get_average_sprint_velocity_per_team_for_analysis(
     status_code, response = client.get_average_sprint_velocity_per_team(
         pi=pi,
         num_sprints=num_sprints,
+        team_name=team_name,
+        is_group=is_group,
     )
     
     if status_code != 200:
@@ -812,6 +824,8 @@ def get_average_sprint_velocity_per_team_for_analysis(
 def get_epics_by_pi_for_analysis(
     client: APIClient,
     pi: str,
+    team_name: str | None = None,
+    is_group: bool = False,
 ) -> str:
     """
     Fetch epics by PI and format as markdown table for LLM.
@@ -819,6 +833,8 @@ def get_epics_by_pi_for_analysis(
     Args:
         client: APIClient instance
         pi: PI name/identifier
+        team_name: Optional team name or group name (if is_group=true) to filter by
+        is_group: If true, team_name is treated as a group name
         
     Returns:
         Formatted string with epics data as markdown table, including header.
@@ -826,7 +842,7 @@ def get_epics_by_pi_for_analysis(
     """
     from utils_formatting import format_table
     
-    status_code, response = client.get_epics_by_pi(pi)
+    status_code, response = client.get_epics_by_pi(pi, team_name=team_name, is_group=is_group)
     
     if status_code != 200:
         return f"=== EPICS BY PI ===\n⚠️ Failed to fetch: HTTP {status_code}\n"
@@ -906,6 +922,8 @@ def get_pi_burndown_for_analysis(
 def get_pi_dependencies_for_analysis(
     client: APIClient,
     pi: str,
+    team_name: str | None = None,
+    is_group: bool = False,
 ) -> Tuple[str, str, int, int]:
     """
     Fetch inbound and outbound dependencies and format as tables for LLM.
@@ -913,6 +931,8 @@ def get_pi_dependencies_for_analysis(
     Args:
         client: APIClient instance
         pi: PI name/identifier (e.g., "Q42025")
+        team_name: Optional team name or group name (if is_group=true) to filter by
+        is_group: If true, team_name is treated as a group name
         
     Returns:
         Tuple of (inbound_formatted, outbound_formatted, inbound_count, outbound_count)
@@ -925,7 +945,7 @@ def get_pi_dependencies_for_analysis(
     outbound_count = 0
     
     # Fetch inbound dependencies
-    status_code, inbound_response = client.get_epic_inbound_dependency_load_by_quarter(pi)
+    status_code, inbound_response = client.get_epic_inbound_dependency_load_by_quarter(pi, team_name=team_name, is_group=is_group)
     if status_code != 200:
         inbound_formatted = f"=== INBOUND DEPENDENCIES ===\n⚠️ Failed to fetch: HTTP {status_code}\n"
     else:
@@ -942,7 +962,7 @@ def get_pi_dependencies_for_analysis(
             inbound_formatted = "=== INBOUND DEPENDENCIES ===\n⚠️ Invalid response format\n"
     
     # Fetch outbound dependencies
-    status_code, outbound_response = client.get_epic_outbound_dependency_metrics_by_quarter(pi)
+    status_code, outbound_response = client.get_epic_outbound_dependency_metrics_by_quarter(pi, team_name=team_name, is_group=is_group)
     if status_code != 200:
         outbound_formatted = f"=== OUTBOUND DEPENDENCIES ===\n⚠️ Failed to fetch: HTTP {status_code}\n"
     else:
