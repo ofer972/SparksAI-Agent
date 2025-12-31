@@ -8,6 +8,7 @@ from utils_formatting import (
     format_transcript,
     PROMPT_FORMAT_CONSTANTS,
 )
+from utils_logging import log
 
 
 def get_prompt_with_error_check(
@@ -49,15 +50,13 @@ def get_prompt_with_error_check(
     # Check for HTTP errors (other than 404 which we already handled)
     if status_code != 200:
         error_msg = f"Failed to fetch prompt '{prompt_name}' for {email_address}: HTTP {status_code}"
-        job_context = f" (Job ID: {job_id})" if job_id is not None else ""
-        print(f"🚨 ERROR FETCHING PROMPT: {prompt_name} for {email_address} - Status {status_code}{job_context}")
+        log(job_id, f"🚨 ERROR FETCHING PROMPT: {prompt_name} for {email_address} - Status {status_code}")
         return None, error_msg
     
     # Check if response is valid dict
     if not isinstance(response_data, dict):
         error_msg = f"Prompt '{prompt_name}' for {email_address} returned invalid response format"
-        job_context = f" (Job ID: {job_id})" if job_id is not None else ""
-        print(f"🚨 PROMPT RESPONSE INVALID: {prompt_name} for {email_address} - Invalid response format{job_context}")
+        log(job_id, f"🚨 PROMPT RESPONSE INVALID: {prompt_name} for {email_address} - Invalid response format")
         return None, error_msg
     
     # Extract prompt_description from nested response structure
@@ -80,14 +79,12 @@ def get_prompt_with_error_check(
     # Check if prompt_description exists and is not empty
     if not prompt_text or not isinstance(prompt_text, str) or not prompt_text.strip():
         error_msg = f"Prompt '{prompt_name}' not found for {email_address}"
-        job_context = f" (Job ID: {job_id})" if job_id is not None else ""
-        print(f"🚨 PROMPT NOT FOUND: {prompt_name} for {email_address}{job_context}")
+        log(job_id, f"🚨 PROMPT NOT FOUND: {prompt_name} for {email_address}")
         return None, error_msg
     
     # Success - log and return prompt with markers
     char_count = len(prompt_text)
-    job_context = f" (Job ID: {job_id})" if job_id is not None else ""
-    print(f"✅ Prompt fetched: {prompt_name} for {email_address} ({char_count} chars){job_context}")
+    log(job_id, f"✅ Prompt fetched: {prompt_name} for {email_address} ({char_count} chars)")
     
     # Format prompt with markers (consistent across all job types)
     formatted_prompt = f"{PROMPT_FORMAT_CONSTANTS.PROMPT_BEGIN}\n{prompt_text}\n{PROMPT_FORMAT_CONSTANTS.PROMPT_END}"
@@ -417,6 +414,7 @@ def get_transcripts_for_analysis(
     team_name: str | None = None,
     pi_name: str | None = None,
     limit: int = 1,
+    job_id: int | None = None,
 ) -> str:
     """
     Fetch transcripts and format them for LLM analysis.
@@ -451,7 +449,7 @@ def get_transcripts_for_analysis(
     
     # Log how many transcripts were found
     transcript_count = len(transcripts)
-    print(f"✅ Found {transcript_count} transcript(s)")
+    log(job_id, f"✅ Found {transcript_count} transcript(s)")
     
     # Determine singular vs plural
     is_plural = transcript_count > 1

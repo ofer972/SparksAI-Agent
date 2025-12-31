@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 import config
 from api_client import APIClient
 from llm_client import call_agent_llm_process
+from utils_logging import log
 from utils_processing import (
     extract_recommendations,
     extract_review_section,
@@ -49,6 +50,7 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
         transcript_type="PI Sync",
         pi_name=pi,
         limit=1,
+        job_id=int(job_id) if job_id is not None else None,
     )
     
     # Fetch other data using shared function
@@ -84,7 +86,7 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
         client.patch_agent_job(int(job_id), {"input_sent": formatted})
 
     # Call dedicated agent LLM processing endpoint
-    print(f"📤 Calling LLM for PI Sync (input: {len(formatted)} chars)")
+    log(int(job_id) if job_id is not None else None, f"📤 Calling LLM for PI Sync (input: {len(formatted)} chars)")
     ok, llm_answer, _raw = call_agent_llm_process(
         client=client,
         prompt=formatted,
@@ -97,10 +99,10 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
 
     # Print first 500 characters of LLM response
     preview = llm_answer[:500] if llm_answer else ""
-    print(f"\n📥 LLM Response Preview (first 500 chars):\n{preview}{'...' if len(llm_answer) > 500 else ''}\n")
+    log(int(job_id) if job_id is not None else None, f"\n📥 LLM Response Preview (first 500 chars):\n{preview}{'...' if len(llm_answer) > 500 else ''}\n")
 
     # Extract structured content from LLM response and save card
-    print("📋 EXTRACTING STRUCTURED CONTENT FROM LLM RESPONSE")
+    log(int(job_id) if job_id is not None else None, "📋 EXTRACTING STRUCTURED CONTENT FROM LLM RESPONSE")
     
     description, full_info_truncated, raw_json_string, card_id = process_llm_response_and_save_ai_card(
         client=client,
@@ -122,7 +124,7 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     _, _, recommendations_json, _ = extract_text_and_json(llm_answer)
 
     # Extract and create recommendations
-    print("📋 EXTRACTING AND SAVING RECOMMENDATIONS")
+    log(int(job_id) if job_id is not None else None, "📋 EXTRACTING AND SAVING RECOMMENDATIONS")
     
     today = datetime.now(timezone.utc).date().isoformat()
     
@@ -141,7 +143,7 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     
     # Fallback to text-based extraction if no JSON recommendations found
     if recommendations_saved == 0:
-        print("⚠️ No recommendations from JSON found - falling back to text extraction")
+        log(int(job_id) if job_id is not None else None, "⚠️ No recommendations from JSON found - falling back to text extraction")
         recs = extract_recommendations(llm_answer, max_count=2)
         for rec_text in recs:
             # For recommendations, team_name should actually be the quarter (PI)
@@ -157,10 +159,10 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
             }
             rsc, rresp = client.create_recommendation(rec_payload)
             if rsc >= 300:
-                print(f"⚠️ Create recommendation failed: {rsc} {rresp}")
+                log(int(job_id) if job_id is not None else None, f"⚠️ Create recommendation failed: {rsc} {rresp}")
             else:
                 recommendations_saved += 1
-                print(f"🧩 Recommendation: priority='High' status='Proposed' text='{rec_text[:120]}'")
+                log(int(job_id) if job_id is not None else None, f"🧩 Recommendation: priority='High' status='Proposed' text='{rec_text[:120]}'")
             
             if recommendations_saved >= 2:
                 break

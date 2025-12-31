@@ -1,6 +1,7 @@
 from typing import Any, Dict, Tuple
 
 from api_client import APIClient
+from utils_logging import log
 
 
 def call_agent_llm_process(
@@ -38,8 +39,8 @@ def call_agent_llm_process(
         status, data = client.post_agent_llm_process(body)
     except Exception as e:
         error_payload = {"error": str(e), "exception_type": type(e).__name__}
-        print(f"❌ LLM Exception: {str(e)} ({type(e).__name__})")
-        print(f"❌ Job Type: {job_type}, Job ID: {job_id}")
+        log(job_id, f"❌ LLM Exception: {str(e)} ({type(e).__name__})")
+        log(job_id, f"❌ Job Type: {job_type}, Job ID: {job_id}")
         return False, "", error_payload
     
     if status == 200 and isinstance(data, dict) and data.get("success") and isinstance(data.get("data"), dict):
@@ -50,9 +51,9 @@ def call_agent_llm_process(
     # Error case: log the error details
     error_payload = data if isinstance(data, dict) else {}
     error_msg = error_payload.get("message") or error_payload.get("error") or f"HTTP {status}" if status != 200 else "Invalid response format"
-    print(f"❌ LLM Error: {error_msg}")
-    print(f"❌ Job Type: {job_type}, Job ID: {job_id}, Status: {status}")
-    print(f"❌ Raw response: {error_payload}")
+    log(job_id, f"❌ LLM Error: {error_msg}")
+    log(job_id, f"❌ Job Type: {job_type}, Job ID: {job_id}, Status: {status}")
+    log(job_id, f"❌ Raw response: {error_payload}")
     
     # Strict behavior: no fallback
     return False, "", error_payload

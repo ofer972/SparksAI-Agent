@@ -2,6 +2,7 @@ import json
 from typing import Any, Callable, Dict, List, Tuple
 
 from api_client import APIClient
+from utils_logging import log
 
 
 def clean_recommendation_text(text: str) -> str:
@@ -76,7 +77,7 @@ def save_recommendations_from_json(
     try:
         parsed_recommendations = json.loads(recommendations_json)
         if isinstance(parsed_recommendations, list) and parsed_recommendations:
-            print(f"📋 Saving {len(parsed_recommendations)} recommendations from JSON to database...")
+            log(job_id, f"📋 Saving {len(parsed_recommendations)} recommendations from JSON to database...")
             
             # Save each recommendation using the JSON structure
             for recommendation_obj in parsed_recommendations:
@@ -98,21 +99,21 @@ def save_recommendations_from_json(
                     }
                     # Debug: Log the payload being sent
                     if source_ai_summary_id is None:
-                        print(f"⚠️ WARNING: source_ai_summary_id is None when creating recommendation")
+                        log(job_id, f"⚠️ WARNING: source_ai_summary_id is None when creating recommendation")
                     rsc, rresp = client.create_recommendation(rec_payload)
                     if rsc >= 300:
-                        print(f"⚠️ Create recommendation failed: {rsc} {rresp}")
+                        log(job_id, f"⚠️ Create recommendation failed: {rsc} {rresp}")
                     else:
                         recommendations_saved += 1
-                        print(f"🧩 Recommendation: priority='{priority}' status='Proposed' header='{recommendation_obj['header'][:60]}' text='{recommendation_obj['text'][:120]}'")
+                        log(job_id, f"🧩 Recommendation: priority='{priority}' status='Proposed' header='{recommendation_obj['header'][:60]}' text='{recommendation_obj['text'][:120]}'")
                     
                     # Limit to max recommendations
                     if recommendations_saved >= max_count:
                         break
                 else:
-                    print(f"⚠️ Skipping invalid recommendation object: {recommendation_obj}")
+                    log(job_id, f"⚠️ Skipping invalid recommendation object: {recommendation_obj}")
     except json.JSONDecodeError as e:
-        print(f"❌ Failed to parse recommendations JSON: {e}")
+        log(job_id, f"❌ Failed to parse recommendations JSON: {e}")
     
     return recommendations_saved
 
@@ -496,12 +497,12 @@ def process_llm_response_and_save_ai_card(
                     # Extract card ID with validation
                     card_id_raw = c.get("id")
                     if card_id_raw is None:
-                        print(f"⚠️ WARNING: Existing card found but id is None, skipping")
+                        log(job_id, f"⚠️ WARNING: Existing card found but id is None, skipping")
                         continue
                     try:
                         card_id = int(card_id_raw)
                     except (ValueError, TypeError) as e:
-                        print(f"⚠️ WARNING: Cannot convert card id to int: {card_id_raw}, error: {e}")
+                        log(job_id, f"⚠️ WARNING: Cannot convert card id to int: {card_id_raw}, error: {e}")
                         continue
                     
                     # Patch existing using unified endpoint
@@ -511,11 +512,11 @@ def process_llm_response_and_save_ai_card(
                         upsert_done = True
                         break
                     else:
-                        print(f"⚠️ Patch ai-insight failed: {psc} {presp}")
+                        log(job_id, f"⚠️ Patch ai-insight failed: {psc} {presp}")
                         # Don't set upsert_done, will try to create new
                 except Exception as e:
                     # Log exception instead of silently swallowing
-                    print(f"⚠️ WARNING: Exception in card upsert loop: {e}")
+                    log(job_id, f"⚠️ WARNING: Exception in card upsert loop: {e}")
                     continue
     
     if not upsert_done:
@@ -526,25 +527,23 @@ def process_llm_response_and_save_ai_card(
             card_id = cresp.get("data", {}).get("card", {}).get("id")
             if card_id is None:
                 # Log the actual response structure for debugging
-                print(f"⚠️ WARNING: Card ID not found in response structure")
-                print(f"   Response keys: {list(cresp.keys()) if isinstance(cresp, dict) else 'not a dict'}")
+                log(job_id, f"⚠️ WARNING: Card ID not found in response structure")
+                log(job_id, f"   Response keys: {list(cresp.keys()) if isinstance(cresp, dict) else 'not a dict'}")
                 if isinstance(cresp, dict) and "data" in cresp:
-                    print(f"   Data keys: {list(cresp['data'].keys()) if isinstance(cresp['data'], dict) else 'not a dict'}")
+                    log(job_id, f"   Data keys: {list(cresp['data'].keys()) if isinstance(cresp['data'], dict) else 'not a dict'}")
                     if isinstance(cresp['data'], dict) and "card" in cresp['data']:
-                        print(f"   Card keys: {list(cresp['data']['card'].keys()) if isinstance(cresp['data']['card'], dict) else 'not a dict'}")
+                        log(job_id, f"   Card keys: {list(cresp['data']['card'].keys()) if isinstance(cresp['data']['card'], dict) else 'not a dict'}")
         elif csc >= 300:
-            print(f"⚠️ Create ai-insight failed: {csc} {cresp}")
+            log(job_id, f"⚠️ Create ai-insight failed: {csc} {cresp}")
     
     # Short log of the created card insight
     desc_preview = (card_payload["description"] or "")[:120]
-    print(
-        f"🗂️ Card insight: name='{card_payload['card_name']}' type='{card_payload.get('insight_type', 'N/A')}' priority='{card_payload['priority']}' preview='{desc_preview}'"
-    )
+    log(job_id, f"🗂️ Card insight: name='{card_payload['card_name']}' type='{card_payload.get('insight_type', 'N/A')}' priority='{card_payload['priority']}' preview='{desc_preview}'")
     
     if card_id is not None:
-        print(f"✅ Card ID extracted: {card_id}")
+        log(job_id, f"✅ Card ID extracted: {card_id}")
     else:
-        print(f"⚠️ WARNING: Card ID is None - source_ai_summary_id will be None in recommendations")
+        log(job_id, f"⚠️ WARNING: Card ID is None - source_ai_summary_id will be None in recommendations")
     
     return description, full_info_truncated, raw_json_string, card_id
 
