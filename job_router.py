@@ -10,7 +10,6 @@ import job_pi_dependencies
 import job_pi_planning_gaps
 import job_group_sprint_flow
 import job_group_sprint_predictability
-import job_group_epic_dependencies
 import job_group_sprint_dependency
 
 
@@ -37,8 +36,6 @@ def route_and_process(job: Dict[str, Any]) -> Tuple[bool, str]:
         return job_group_sprint_flow.process(job)
     if job_type == "Group Sprint Predictability":
         return job_group_sprint_predictability.process(job)
-    if job_type == "Group Epic Dependencies":
-        return job_group_epic_dependencies.process(job)
     if job_type == "Group Sprint Dependency":
         return job_group_sprint_dependency.process(job)
     return False, f"Unknown job type: {job_type}"

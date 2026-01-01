@@ -10,7 +10,6 @@ from utils_processing import (
     extract_recommendations,
     extract_review_section,
     extract_text_and_json,
-    fetch_pi_data_for_analysis,
     get_pi_dependencies_for_analysis,
     get_prompt_with_error_check,
     process_llm_response_and_save_ai_card,
@@ -33,42 +32,6 @@ def _extract_pi(job: Dict[str, Any]) -> str | None:
     return None
 
 
-def _extract_pi_dates(pi_status_obj: Dict[str, Any] | None) -> Tuple[str | None, str | None]:
-    """Extract PI start and end dates from PI status object.
-    
-    Args:
-        pi_status_obj: PI status data dict (can contain 'data' list or be the list directly)
-        
-    Returns:
-        Tuple of (start_date, end_date) or (None, None) if not found
-    """
-    if not pi_status_obj:
-        return None, None
-    
-    # Extract the actual data from response structure
-    status_list = None
-    if isinstance(pi_status_obj, dict):
-        # Handle API response format: {"success": true, "data": [...], ...}
-        if "data" in pi_status_obj and isinstance(pi_status_obj["data"], list):
-            status_list = pi_status_obj["data"]
-        else:
-            # If it's a dict but no 'data' key, treat it as a single status object
-            status_list = [pi_status_obj]
-    elif isinstance(pi_status_obj, list):
-        status_list = pi_status_obj
-    
-    if not status_list or len(status_list) == 0:
-        return None, None
-    
-    # Get the first item (should only be one for a specific PI)
-    status_obj = status_list[0]
-    if isinstance(status_obj, dict):
-        # Try common date field names
-        start_date = status_obj.get("pi_start_date") or status_obj.get("start_date") or status_obj.get("pi_start")
-        end_date = status_obj.get("pi_end_date") or status_obj.get("end_date") or status_obj.get("pi_end")
-        return start_date, end_date
-    
-    return None, None
 
 
 def process(job: Dict[str, Any]) -> Tuple[bool, str]:
@@ -84,10 +47,7 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
 
     job_id = job.get("job_id") or job.get("id")
     job_type = job.get("job_type", "PI Dependencies")
-    pi = _extract_pi(job)
-    if not pi:
-        return False, "Missing PI in job payload"
-
+    
     # Extract team_name or group_name from job and determine is_group flag
     team_name = job.get("team_name")
     group_name = job.get("group_name")
@@ -103,17 +63,34 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
         team_param = None
         is_group = False
 
-    # Fetch PI status to get dates
-    _, pi_status_obj, _ = fetch_pi_data_for_analysis(
-        client=client,
-        pi=pi,
-        team_name=team_param,
-        is_group=is_group,
-        include_transcript=False,  # Don't need transcript
-    )
+    # Fetch current and next PIs to get the current PI and dates
+    status_code, current_pis_response = client.get_current_and_next_pis()
+    if status_code != 200:
+        return False, f"Failed to fetch current PI: HTTP {status_code}"
     
-    # Extract PI dates
-    pi_start_date, pi_end_date = _extract_pi_dates(pi_status_obj)
+    if not isinstance(current_pis_response, dict) or not current_pis_response.get("success"):
+        return False, "Invalid response format from current-and-next PIs endpoint"
+    
+    data = current_pis_response.get("data", {})
+    current_pis = data.get("current_pis", [])
+    
+    if not current_pis or len(current_pis) == 0:
+        return False, "No current PI found"
+    
+    # Extract current PI information
+    current_pi_obj = current_pis[0]
+    pi_from_response = current_pi_obj.get("pi_name")
+    if not pi_from_response:
+        return False, "Current PI object missing pi_name"
+    
+    # Use PI from job payload if provided, otherwise use current PI from response
+    pi = _extract_pi(job)
+    if not pi:
+        pi = pi_from_response
+    
+    # Extract PI dates from current PI response
+    pi_start_date = current_pi_obj.get("start_date")
+    pi_end_date = current_pi_obj.get("end_date")
     
     # Get current date
     current_date = datetime.now(timezone.utc).date().isoformat()
@@ -152,14 +129,34 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     if pi_end_date:
         parts.append(f"PI End Date: {pi_end_date}")
     parts.append(f"Current Date: {current_date}")
+    
+    # Add group information if group_name is provided
+    if is_group and group_name:
+        parts.append(f"Data for group: {group_name}")
     parts.append("")
     
-    # Add inbound dependencies
-    parts.append(inbound_formatted)
+    # Add inbound dependencies with group context if applicable
+    if is_group and group_name:
+        # Modify the inbound header to include group info
+        inbound_with_group = inbound_formatted.replace(
+            "=== INBOUND DEPENDENCIES ===",
+            f"=== INBOUND DEPENDENCIES (Data for group: {group_name}) ==="
+        )
+        parts.append(inbound_with_group)
+    else:
+        parts.append(inbound_formatted)
     parts.append("")
     
-    # Add outbound dependencies
-    parts.append(outbound_formatted)
+    # Add outbound dependencies with group context if applicable
+    if is_group and group_name:
+        # Modify the outbound header to include group info
+        outbound_with_group = outbound_formatted.replace(
+            "=== OUTBOUND DEPENDENCIES ===",
+            f"=== OUTBOUND DEPENDENCIES (Data for group: {group_name}) ==="
+        )
+        parts.append(outbound_with_group)
+    else:
+        parts.append(outbound_formatted)
     parts.append("")
     
     # Add prompt (already includes markers from get_prompt_with_error_check)
