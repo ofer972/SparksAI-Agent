@@ -1,9 +1,11 @@
+import time
 from typing import Any, Dict, Tuple
 from datetime import datetime, timezone
 
 import config
 from api_client import APIClient
 from llm_client import call_agent_llm_process
+from utils_audit import call_audit_service, extract_tokens_from_llm_response
 from utils_processing import (
     extract_recommendations,
     extract_review_section,
@@ -25,6 +27,7 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     Returns:
         Tuple of (success, result_text)
     """
+    start_time = time.time()
     client = APIClient()
 
     job_id = job.get("job_id") or job.get("id")
@@ -109,6 +112,26 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
         metadata={"group_name": group_name, "pi_name": pi},
     )
     if not ok:
+        # Call audit service for failure case
+        duration_seconds = time.time() - start_time
+        tokens_used = extract_tokens_from_llm_response(_raw)
+        job_params = {
+            "team_name": job.get("team_name"),
+            "group_name": group_name,
+            "pi": pi,
+            "job_id": int(job_id) if job_id is not None else None,
+            "job_type": job_type,
+        }
+        call_audit_service(
+            action=job_type,
+            duration_seconds=duration_seconds,
+            status_code=500,
+            action_date=datetime.now(timezone.utc),
+            tokens_used=tokens_used,
+            query_params=job_params,
+            body=job_params,
+            job_id=int(job_id) if job_id is not None else None,
+        )
         return False, "AI chat failed or returned empty response"
 
     # Print first 500 characters of LLM response
@@ -171,6 +194,29 @@ LLM Response Length: {len(llm_answer)} characters
 === AI ANALYSIS ===
 {llm_answer}
 """
+    
+    # Call audit service
+    duration_seconds = time.time() - start_time
+    status_code = 200
+    tokens_used = extract_tokens_from_llm_response(_raw)
+    job_params = {
+        "team_name": job.get("team_name"),
+        "group_name": group_name,
+        "pi": pi,
+        "job_id": int(job_id) if job_id is not None else None,
+        "job_type": job_type,
+    }
+    call_audit_service(
+        action=job_type,
+        duration_seconds=duration_seconds,
+        status_code=status_code,
+        action_date=datetime.now(timezone.utc),
+        tokens_used=tokens_used,
+        query_params=job_params,
+        body=job_params,
+        job_id=int(job_id) if job_id is not None else None,
+    )
+    
     return True, result_text
 
 

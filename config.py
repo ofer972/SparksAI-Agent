@@ -37,4 +37,7 @@ NETWORK_BACKOFF_CAP_SECONDS: int = _int_env("NETWORK_BACKOFF_CAP", 300)
 API_TIMEOUT_SECONDS: int = _int_env("API_TIMEOUT", 60)
 LLM_TIMEOUT_SECONDS: int = _int_env("LLM_TIMEOUT", 120)
 
+# Audit service configuration
+AUDIT_SERVICE_URL: str = os.getenv("AUDIT_SERVICE_URL", "")
+
 
