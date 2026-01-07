@@ -955,7 +955,12 @@ def get_pi_dependencies_for_analysis(
             if data and isinstance(data, list):
                 inbound_count = len(data)
                 table = format_table(data, max_width=50)
-                inbound_formatted = f"=== INBOUND DEPENDENCIES ===\n{table}\n"
+                # Extract average_number_of_dependencies_per_team from response root and append after table
+                avg_deps = inbound_response.get("average_number_of_dependencies_per_team")
+                if avg_deps is not None:
+                    inbound_formatted = f"=== INBOUND DEPENDENCIES ===\n{table}\n\naverage_number_of_dependencies_per_team: {avg_deps}\n"
+                else:
+                    inbound_formatted = f"=== INBOUND DEPENDENCIES ===\n{table}\n"
             else:
                 inbound_formatted = "=== INBOUND DEPENDENCIES ===\nNo inbound dependency data found\n"
         else:
@@ -972,7 +977,12 @@ def get_pi_dependencies_for_analysis(
             if data and isinstance(data, list):
                 outbound_count = len(data)
                 table = format_table(data, max_width=50)
-                outbound_formatted = f"=== OUTBOUND DEPENDENCIES ===\n{table}\n"
+                # Extract average_number_of_dependencies_per_team from response root and append after table
+                avg_deps = outbound_response.get("average_number_of_dependencies_per_team")
+                if avg_deps is not None:
+                    outbound_formatted = f"=== OUTBOUND DEPENDENCIES ===\n{table}\n\naverage_number_of_dependencies_per_team: {avg_deps}\n"
+                else:
+                    outbound_formatted = f"=== OUTBOUND DEPENDENCIES ===\n{table}\n"
             else:
                 outbound_formatted = "=== OUTBOUND DEPENDENCIES ===\nNo outbound dependency data found\n"
         else:
