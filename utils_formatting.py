@@ -200,7 +200,7 @@ def format_pi_status(pi_status: Dict[str, Any] | List[Dict[str, Any]] | None) ->
     status_obj = status_list[0]
     if isinstance(status_obj, dict):
         # Format each column as "column_name = value"
-        for key, value in sorted(status_obj.items()):
+        for key, value in status_obj.items():
             lines.append(f"{key} = {value}")
     
     return "\n".join(lines)
