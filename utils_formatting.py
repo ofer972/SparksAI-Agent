@@ -86,7 +86,7 @@ def format_burndown_markdown(burndown: Dict[str, Any] | List[Dict[str, Any]] | N
     if isinstance(burndown, list):
         if not burndown:
             return "No burndown data found"
-        table = format_table(burndown)
+        table = format_table(burndown, max_width=50)
         return table if table else "No burndown data found"
     
     # Handle dict input (PI burndown)
@@ -123,7 +123,7 @@ def format_burndown_markdown(burndown: Dict[str, Any] | List[Dict[str, Any]] | N
             if isinstance(v_list, list) and len(v_list) > 0 and isinstance(v_list[0], dict):
                 # Format as table using existing utility
                 lines.append(f"**{k}:**")
-                table = format_table(v_list)
+                table = format_table(v_list, max_width=50)
                 if table:
                     lines.append(table)
                 else:
