@@ -91,6 +91,88 @@ def get_prompt_with_error_check(
     return formatted_prompt, None
 
 
+def get_prompt_with_active_check(
+    client: APIClient,
+    email_address: str,
+    prompt_name: str,
+    job_type: str,
+    job_id: int | None = None,
+) -> Tuple[str | None, str | None, bool | None, Dict[str, Any] | None]:
+    """
+    Fetch prompt from backend with error handling and active status check.
+    
+    Args:
+        client: APIClient instance
+        email_address: Email address for prompt (e.g., "DailyAgent", "PIAgent")
+        prompt_name: Name of prompt (e.g., "Daily Insights", "PI Sync")
+        job_type: Job type for error messages (e.g., "Daily Agent")
+        job_id: Optional job ID for logging
+    
+    Returns:
+        Tuple of (prompt_text, error_message, prompt_active, raw_response):
+        - If success: (prompt_text, None, prompt_active, raw_response)
+        - If failure: (None, error_message, None, raw_response)
+        - prompt_active: True if active, False if inactive, None if not found
+        - raw_response: The raw API response dict
+    """
+    # Try URL-encoded prompt name first
+    url_encoded_name = prompt_name.replace(" ", "%20")
+    status_code, response_data = client.get_prompt(email_address, url_encoded_name)
+    
+    # If 404, try space-separated version
+    if status_code == 404:
+        status_code, response_data = client.get_prompt(email_address, prompt_name)
+    
+    # Check for HTTP errors (other than 404 which we already handled)
+    if status_code != 200:
+        error_msg = f"Failed to fetch prompt '{prompt_name}' for {email_address}: HTTP {status_code}"
+        log(job_id, f"🚨 ERROR FETCHING PROMPT: {prompt_name} for {email_address} - Status {status_code}")
+        return None, error_msg, None, response_data if isinstance(response_data, dict) else {}
+    
+    # Check if response is valid dict
+    if not isinstance(response_data, dict):
+        error_msg = f"Prompt '{prompt_name}' for {email_address} returned invalid response format"
+        log(job_id, f"🚨 PROMPT RESPONSE INVALID: {prompt_name} for {email_address} - Invalid response format")
+        return None, error_msg, None, {}
+    
+    # Extract prompt_description and prompt_active from nested response structure
+    prompt_text = None
+    prompt_active = None
+    
+    if isinstance(response_data, dict):
+        # Try different response structures (API returns data.prompt.prompt_description)
+        data = response_data.get("data") or {}
+        if isinstance(data, dict):
+            # Check for nested prompt object: data.prompt.prompt_description
+            prompt_obj = data.get("prompt")
+            if isinstance(prompt_obj, dict):
+                prompt_text = prompt_obj.get("prompt_description")
+                prompt_active = prompt_obj.get("prompt_active")
+            # Fallback: check for direct prompt_description in data
+            if not prompt_text:
+                prompt_text = data.get("prompt_description")
+                prompt_active = data.get("prompt_active")
+        # Final fallback: check root level
+        if not prompt_text:
+            prompt_text = response_data.get("prompt_description")
+            prompt_active = response_data.get("prompt_active")
+    
+    # Check if prompt_description exists and is not empty
+    if not prompt_text or not isinstance(prompt_text, str) or not prompt_text.strip():
+        error_msg = f"Prompt '{prompt_name}' not found for {email_address}"
+        log(job_id, f"🚨 PROMPT NOT FOUND: {prompt_name} for {email_address}")
+        return None, error_msg, None, response_data
+    
+    # Success - log and return prompt with markers
+    char_count = len(prompt_text)
+    active_status = "active" if prompt_active else "inactive"
+    log(job_id, f"✅ Prompt fetched: {prompt_name} for {email_address} ({char_count} chars, {active_status})")
+    
+    # Format prompt with markers (consistent across all job types)
+    formatted_prompt = f"{PROMPT_FORMAT_CONSTANTS.PROMPT_BEGIN}\n{prompt_text}\n{PROMPT_FORMAT_CONSTANTS.PROMPT_END}"
+    return formatted_prompt, None, prompt_active, response_data
+
+
 def fetch_pi_data_for_analysis(
     client: APIClient,
     pi: str,
