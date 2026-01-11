@@ -188,12 +188,19 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     # ===== CONDITIONAL EXECUTION: TWO-STEP OR SINGLE-STEP =====
     if use_two_step_mode:
         # ===== TWO-STEP MODE =====
+        # Initialize input_sent_parts to build incrementally
+        input_sent_parts = []
+        
         # Build first input (data + first prompt)
         parts_first = data_parts.copy()
         if prompt_text_first:
             parts_first.append(prompt_text_first)
         
         formatted_first = "\n".join(parts_first)
+        
+        # Add to input_sent (what was sent to first LLM)
+        input_sent_parts.append("=== FIRST CALL ===")
+        input_sent_parts.append(formatted_first)
 
         # Call first LLM
         log(int(job_id) if job_id is not None else None, f"📤 Calling LLM (First Call) for PI Dependencies (input: {len(formatted_first)} chars)")
@@ -231,6 +238,11 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
         # Log first response preview
         preview_first = llm_answer_first[:500] if llm_answer_first else ""
         log(int(job_id) if job_id is not None else None, f"\n📥 First LLM Response Preview (first 500 chars):\n{preview_first}{'...' if len(llm_answer_first) > 500 else ''}\n")
+        
+        # Add first response to input_sent
+        input_sent_parts.append("")
+        input_sent_parts.append("=== FIRST CALL RESPONSE ===")
+        input_sent_parts.append(llm_answer_first)
 
         # ===== SECOND LLM CALL =====
         # Fetch second prompt with error checking
@@ -275,6 +287,11 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
             parts_second.append(prompt_text_second)
         
         formatted_second = "\n".join(parts_second)
+        
+        # Add to input_sent (what was sent to second LLM)
+        input_sent_parts.append("")
+        input_sent_parts.append("=== SECOND CALL ===")
+        input_sent_parts.append(formatted_second)
 
         # Call second LLM
         log(int(job_id) if job_id is not None else None, f"📤 Calling LLM (Second Call) for PI Dependencies (input: {len(formatted_second)} chars)")
@@ -291,31 +308,13 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
         tokens_second = extract_tokens_from_llm_response(_raw_second)
         total_tokens = tokens_first + tokens_second
 
-        # Build comprehensive input_sent for job (includes everything from both calls)
-        comprehensive_parts = ["=== FIRST CALL ==="]
-        comprehensive_parts.append(data_formatted)
-        if prompt_text_first:
-            comprehensive_parts.append(prompt_text_first)
-        comprehensive_parts.append("")
-        comprehensive_parts.append("=== FIRST CALL RESPONSE ===")
-        comprehensive_parts.append(llm_answer_first)
-        comprehensive_parts.append("")
-        comprehensive_parts.append("=== SECOND CALL ===")
-        # Show exactly what was sent in the second call
-        comprehensive_parts.append(data_formatted)
-        comprehensive_parts.append("")
-        comprehensive_parts.append("LOCKED DECISION CONTEXT:")
-        comprehensive_parts.append(llm_answer_first)
-        comprehensive_parts.append("")
-        if prompt_text_second:
-            comprehensive_parts.append(prompt_text_second)
-        
-        comprehensive_input_sent = "\n".join(comprehensive_parts)
+        # Build final input_sent from parts (uses actual variables sent to LLM)
+        input_sent = "\n".join(input_sent_parts)
 
         # Save job info after second call (regardless of success/failure)
         if job_id is not None:
             client.patch_agent_job(int(job_id), {
-                "input_sent": comprehensive_input_sent,
+                "input_sent": input_sent,
                 "result": llm_answer if ok_second else ""
             })
 
