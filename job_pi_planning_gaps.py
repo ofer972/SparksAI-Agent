@@ -14,6 +14,7 @@ from utils_processing import (
     extract_text_and_json,
     fetch_pi_data_for_analysis,
     get_average_sprint_velocity_per_team_for_analysis,
+    get_epics_average_velocity_for_analysis,
     get_epics_by_pi_for_analysis,
     get_pi_status_for_today_by_team_for_analysis,
     get_prompt_with_error_check,
@@ -75,6 +76,58 @@ def _extract_pi_dates(pi_status_obj: Dict[str, Any] | None) -> Tuple[str | None,
     return None, None
 
 
+def _format_pi_status_fields(pi_status_obj: Dict[str, Any] | None) -> str:
+    """Format specific PI status fields for LLM input.
+    
+    Args:
+        pi_status_obj: PI status data dict (can contain 'data' list or be the list directly)
+        
+    Returns:
+        Formatted string with specific fields in "field_name = value" format
+    """
+    if not pi_status_obj:
+        return ""
+    
+    # Extract the actual data from response structure
+    status_list = None
+    if isinstance(pi_status_obj, dict):
+        # Handle API response format: {"success": true, "data": [...], ...}
+        if "data" in pi_status_obj and isinstance(pi_status_obj["data"], list):
+            status_list = pi_status_obj["data"]
+        else:
+            # If it's a dict but no 'data' key, treat it as a single status object
+            status_list = [pi_status_obj]
+    elif isinstance(pi_status_obj, list):
+        status_list = pi_status_obj
+    
+    if not status_list or len(status_list) == 0:
+        return ""
+    
+    # Get the first item (should only be one for a specific PI)
+    status_obj = status_list[0]
+    if not isinstance(status_obj, dict):
+        return ""
+    
+    # Fields to extract and format
+    fields_to_include = [
+        "pi_name",
+        "pi_start_date",
+        "pi_end_date",
+        "remaining_epics",
+        "ideal_remaining",
+        "total_issues",
+        "progress_delta_pct_status",
+    ]
+    
+    parts = []
+    for field in fields_to_include:
+        value = status_obj.get(field)
+        if value is not None:
+            parts.append(f"{field} = {value}")
+    
+    return "\n".join(parts) if parts else ""
+
+
 def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     """Process PI Planning Gaps job type.
     
@@ -120,6 +173,9 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     # Extract PI dates
     pi_start_date, pi_end_date = _extract_pi_dates(pi_status_obj)
     
+    # Format PI status fields for LLM
+    pi_status_fields_formatted = _format_pi_status_fields(pi_status_obj)
+    
     # Get current date
     current_date = datetime.now(timezone.utc).date().isoformat()
 
@@ -148,6 +204,15 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
         is_group=is_group,
     )
 
+    # Fetch epics average velocity and format
+    epics_velocity_formatted = get_epics_average_velocity_for_analysis(
+        client=client,
+        pi=pi,
+        team_name=team_param,
+        is_group=is_group,
+        num_pis=3,  # Default: analyze last 3 completed PIs
+    )
+
     # Fetch prompt with error checking
     prompt_text, prompt_error = get_prompt_with_error_check(
         client=client,
@@ -170,6 +235,12 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     parts.append(f"Current Date: {current_date}")
     parts.append("")
     
+    # Add PI status fields from get-pi-status-for-today endpoint
+    if pi_status_fields_formatted:
+        parts.append("=== PI STATUS FOR TODAY ===")
+        parts.append(pi_status_fields_formatted)
+        parts.append("")
+    
     # Add PI status by team (formatted as markdown table)
     parts.append(pi_status_by_team_formatted)
     parts.append("")
@@ -180,6 +251,10 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     
     # Add epics by PI (formatted as markdown table)
     parts.append(epics_formatted)
+    parts.append("")
+    
+    # Add epics average velocity
+    parts.append(epics_velocity_formatted)
     parts.append("")
     
     # Add prompt (already includes markers from get_prompt_with_error_check)

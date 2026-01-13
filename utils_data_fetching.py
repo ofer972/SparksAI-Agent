@@ -970,6 +970,101 @@ def get_epics_by_pi_for_analysis(
         return "=== EPICS BY PI ===\n⚠️ Invalid response format\n"
 
 
+def get_epics_average_velocity_for_analysis(
+    client: APIClient,
+    pi: str,
+    team_name: str | None = None,
+    is_group: bool = False,
+    num_pis: int = 3,
+) -> str:
+    """
+    Fetch epics average velocity and format for LLM analysis.
+    
+    Args:
+        client: APIClient instance
+        pi: PI name/identifier
+        team_name: Optional team name or group name (if is_group=true) to filter by
+        is_group: If true, team_name is treated as a group name
+        num_pis: Number of recent completed PIs to analyze (default: 3, min: 1, max: 20)
+        
+    Returns:
+        Formatted string with epic velocity data, including header.
+        Returns error message if fetch fails or data is empty.
+    """
+    from utils_formatting import format_table
+    
+    status_code, response = client.get_epics_average_velocity(
+        pi=pi,
+        team_name=team_name,
+        is_group=is_group,
+        num_pis=num_pis,
+    )
+    
+    if status_code != 200:
+        return f"=== EPICS AVERAGE VELOCITY ===\n⚠️ Failed to fetch: HTTP {status_code}\n"
+    
+    # Extract data from response structure
+    if isinstance(response, dict) and response.get("success"):
+        data_obj = response.get("data", {})
+        if isinstance(data_obj, dict):
+            parts = ["=== EPICS AVERAGE VELOCITY ==="]
+            
+            # Add PIs analyzed information
+            num_pis_analyzed = data_obj.get("num_pis", 0)
+            parts.append(f"PIs Analyzed: {num_pis_analyzed}")
+            
+            pis_analyzed = data_obj.get("pis_analyzed", [])
+            if pis_analyzed and isinstance(pis_analyzed, list):
+                pi_names = []
+                for pi_info in pis_analyzed:
+                    if isinstance(pi_info, dict):
+                        pi_name = pi_info.get("pi_name", "")
+                        end_date = pi_info.get("end_date", "")
+                        if pi_name:
+                            if end_date:
+                                pi_names.append(f"{pi_name} (ended: {end_date})")
+                            else:
+                                pi_names.append(pi_name)
+                if pi_names:
+                    parts.append(f"PI Names: {', '.join(pi_names)}")
+            parts.append("")
+            
+            # Add velocity by team table
+            velocity_by_team = data_obj.get("velocity_by_team", [])
+            if velocity_by_team and isinstance(velocity_by_team, list):
+                parts.append("Velocity by Team:")
+                table = format_table(velocity_by_team, max_width=50)
+                if table:
+                    parts.append(table)
+                else:
+                    parts.append("No team velocity data available")
+            else:
+                parts.append("Velocity by Team:")
+                parts.append("No team velocity data found")
+            parts.append("")
+            
+            # Add overall PI velocity
+            overall_velocity = data_obj.get("overall_pi_velocity", {})
+            if overall_velocity and isinstance(overall_velocity, dict):
+                parts.append("Overall PI Velocity:")
+                completed_epics = overall_velocity.get("completed_epics_in_selected_pis")
+                avg_velocity = overall_velocity.get("average_velocity")
+                
+                if completed_epics is not None:
+                    parts.append(f"completed_epics_in_selected_pis = {completed_epics}")
+                if avg_velocity is not None:
+                    parts.append(f"average_velocity = {avg_velocity}")
+            else:
+                parts.append("Overall PI Velocity:")
+                parts.append("No overall velocity data available")
+            
+            return "\n".join(parts) + "\n"
+        else:
+            return "=== EPICS AVERAGE VELOCITY ===\n⚠️ Invalid response format\n"
+    else:
+        return "=== EPICS AVERAGE VELOCITY ===\n⚠️ Invalid response format\n"
+
+
 def get_pi_burndown_for_analysis(
     client: APIClient,
     pi: str,

@@ -605,6 +605,46 @@ class APIClient:
         )
         return resp.status_code, self._safe_json(resp)
 
+    def get_epics_average_velocity(
+        self,
+        pi: str,
+        team_name: str | None = None,
+        is_group: bool = False,
+        num_pis: int = 3,
+    ) -> Tuple[int, Any]:
+        """Get epics average velocity for a PI.
+        
+        Args:
+            pi: PI name/identifier (e.g., "Q42025")
+            team_name: Optional team name or group name (if is_group=true) to filter by
+            is_group: If true, team_name is treated as a group name
+            num_pis: Number of recent completed PIs to analyze (default: 3, min: 1, max: 20)
+            
+        Returns:
+            Tuple of (status_code, response_data)
+            Response structure: {
+                "success": true,
+                "data": {
+                    "num_pis": int,
+                    "pis_analyzed": [...],
+                    "velocity_by_team": [...],
+                    "overall_pi_velocity": {...}
+                }
+            }
+        """
+        params: Dict[str, Any] = {"pi": pi, "num_pis": num_pis}
+        if team_name:
+            params["team_name"] = team_name
+        if is_group:
+            params["isGroup"] = "true"
+        resp = requests.get(
+            self._url("/api/v1/pis/epics-average-velocity"),
+            params=params,
+            headers=self._headers(),
+            timeout=self.timeout_seconds,
+        )
+        return resp.status_code, self._safe_json(resp)
+
     def get_prompt(self, email_address: str, prompt_name: str) -> Tuple[int, Any]:
         resp = requests.get(
             self._url(f"/api/v1/prompts/{email_address}/{prompt_name}"),
