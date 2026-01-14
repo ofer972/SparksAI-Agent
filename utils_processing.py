@@ -57,6 +57,7 @@ from utils_llm_processing_and_extraction import (
     extract_daily_progress_review,  # Backward compatibility
     extract_pi_sync_review,  # Backward compatibility
     process_llm_response_and_save_ai_card,
+    process_llm_with_two_step_fallback,
 )
 
 # Re-export everything for backward compatibility
@@ -102,4 +103,5 @@ __all__ = [
     "extract_daily_progress_review",  # Backward compatibility
     "extract_pi_sync_review",  # Backward compatibility
     "process_llm_response_and_save_ai_card",
+    "process_llm_with_two_step_fallback",
 ]

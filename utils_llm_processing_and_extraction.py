@@ -1,7 +1,12 @@
 import json
+import time
 from typing import Any, Callable, Dict, List, Tuple
+from datetime import datetime, timezone
 
 from api_client import APIClient
+from llm_client import call_agent_llm_process
+from utils_audit import call_audit_service, extract_tokens_from_llm_response
+from utils_data_fetching import get_prompt_with_active_check, get_prompt_with_error_check
 from utils_logging import log
 
 
@@ -382,6 +387,315 @@ def extract_daily_progress_review(llm_response: str) -> str | None:
 def extract_pi_sync_review(llm_response: str) -> str | None:
     """Deprecated: Use extract_review_section instead"""
     return extract_review_section(llm_response)
+
+
+def process_llm_with_two_step_fallback(
+    client: APIClient,
+    data_parts: List[str],
+    prompt_base_name: str,
+    prompt_email: str,
+    job_type: str,
+    job_id: int | None,
+    job_params: Dict[str, Any],
+    metadata: Dict[str, Any] | None = None,
+    context_separator: str = "LOCKED DECISION CONTEXT:",
+    start_time: float | None = None,
+) -> Tuple[bool, str, int, Dict[str, Any]]:
+    """
+    Process LLM with optional two-step mode.
+    
+    Checks for "{prompt_base_name}-1" prompt with active status. If found and active,
+    uses two-step mode (first call with "-1" prompt, second call with "-2" prompt).
+    Otherwise, falls back to single-step mode with "{prompt_base_name}" prompt.
+    
+    Args:
+        client: APIClient instance
+        data_parts: List of strings to build the data section (will be reused for both calls)
+        prompt_base_name: Base prompt name (e.g., "PI Dependencies")
+        prompt_email: Email address for prompt (e.g., "PIAgent")
+        job_type: Job type string (e.g., "PI Dependencies")
+        job_id: Optional job ID for logging
+        job_params: Dict with job parameters for audit service (team_name, group_name, pi, etc.)
+        metadata: Optional metadata dict for LLM calls (pi_name, team_name, etc.)
+        context_separator: String to separate first response from second prompt (default: "LOCKED DECISION CONTEXT:")
+        start_time: Optional start time for duration calculation (if None, uses current time)
+    
+    Returns:
+        Tuple of (success, final_llm_answer, total_tokens, metadata_dict) where:
+        - success: True if LLM processing succeeded, False otherwise
+        - final_llm_answer: The final LLM response (from second call if two-step, single call if single-step)
+        - total_tokens: Total tokens used across all LLM calls
+        - metadata_dict: Dict with keys:
+            - use_two_step_mode: bool indicating if two-step mode was used
+            - input_sent: Complete input_sent string to save to job
+            - formatted_first: First call input (if two-step)
+            - formatted_second: Second call input (if two-step)
+            - formatted: Single call input (if single-step)
+    """
+    if start_time is None:
+        start_time = time.time()
+    
+    # Try to fetch "{prompt_base_name}-1" with active status check
+    prompt_text_first, prompt_error, prompt_active, _ = get_prompt_with_active_check(
+        client=client,
+        email_address=prompt_email,
+        prompt_name=f"{prompt_base_name}-1",
+        job_type=job_type,
+        job_id=job_id,
+    )
+    
+    use_two_step_mode = False
+    prompt_text = None
+    
+    # Determine if we should use two-step mode or fallback to single-step
+    if not prompt_error and prompt_text_first and prompt_active:
+        use_two_step_mode = True
+        log(job_id, f"✅ Using two-step mode: {prompt_base_name}-1 found and active")
+    else:
+        # Fallback: fetch "{prompt_base_name}" (original prompt)
+        fallback_reason = "not found" if prompt_error else "inactive"
+        log(job_id, f"⚠️ FALLBACK MODE: {prompt_base_name}-1 {fallback_reason}, using '{prompt_base_name}'")
+        prompt_text, prompt_error_fallback = get_prompt_with_error_check(
+            client=client,
+            email_address=prompt_email,
+            prompt_name=prompt_base_name,
+            job_type=job_type,
+            job_id=job_id,
+        )
+        if prompt_error_fallback:
+            # Extract tokens (none used yet)
+            duration_seconds = time.time() - start_time
+            call_audit_service(
+                action=job_type,
+                duration_seconds=duration_seconds,
+                status_code=500,
+                action_date=datetime.now(timezone.utc),
+                tokens_used=0,
+                query_params=job_params,
+                body=job_params,
+                job_id=job_id,
+            )
+            return False, "", 0, {"use_two_step_mode": False, "input_sent": "", "formatted": ""}
+        use_two_step_mode = False
+    
+    # Initialize input_sent_parts to build incrementally
+    input_sent_parts = []
+    
+    if use_two_step_mode:
+        # ===== TWO-STEP MODE =====
+        # Build first input (data + first prompt)
+        parts_first = data_parts.copy()
+        if prompt_text_first:
+            parts_first.append(prompt_text_first)
+        
+        formatted_first = "\n".join(parts_first)
+        
+        # Add to input_sent (what was sent to first LLM)
+        input_sent_parts.append("=== FIRST CALL ===")
+        input_sent_parts.append(formatted_first)
+        
+        # Call first LLM
+        log(job_id, f"📤 Calling LLM (First Call) for {job_type} (input: {len(formatted_first)} chars)")
+        ok_first, llm_answer_first, _raw_first = call_agent_llm_process(
+            client=client,
+            prompt=formatted_first,
+            job_type=job_type,
+            job_id=job_id,
+            metadata={**(metadata or {}), "call_number": 1},
+        )
+        
+        if not ok_first:
+            # Extract tokens from first call for audit
+            tokens_first = extract_tokens_from_llm_response(_raw_first) or 0
+            duration_seconds = time.time() - start_time
+            call_audit_service(
+                action=job_type,
+                duration_seconds=duration_seconds,
+                status_code=500,
+                action_date=datetime.now(timezone.utc),
+                tokens_used=tokens_first,
+                query_params=job_params,
+                body=job_params,
+                job_id=job_id,
+            )
+            return False, "", tokens_first, {
+                "use_two_step_mode": True,
+                "input_sent": "\n".join(input_sent_parts),
+                "formatted_first": formatted_first,
+                "formatted_second": "",
+            }
+        
+        # Log first response preview
+        preview_first = llm_answer_first[:500] if llm_answer_first else ""
+        log(job_id, f"\n📥 First LLM Response Preview (first 500 chars):\n{preview_first}{'...' if len(llm_answer_first) > 500 else ''}\n")
+        
+        # Add first response to input_sent
+        input_sent_parts.append("")
+        input_sent_parts.append("=== FIRST CALL RESPONSE ===")
+        input_sent_parts.append(llm_answer_first)
+        
+        # ===== SECOND LLM CALL =====
+        # Fetch second prompt with error checking
+        prompt_text_second, prompt_error = get_prompt_with_error_check(
+            client=client,
+            email_address=prompt_email,
+            prompt_name=f"{prompt_base_name}-2",
+            job_type=job_type,
+            job_id=job_id,
+        )
+        
+        if prompt_error:
+            # Extract tokens from first call for audit even if second prompt fails
+            tokens_first = extract_tokens_from_llm_response(_raw_first) or 0
+            duration_seconds = time.time() - start_time
+            call_audit_service(
+                action=job_type,
+                duration_seconds=duration_seconds,
+                status_code=500,
+                action_date=datetime.now(timezone.utc),
+                tokens_used=tokens_first,
+                query_params=job_params,
+                body=job_params,
+                job_id=job_id,
+            )
+            return False, "", tokens_first, {
+                "use_two_step_mode": True,
+                "input_sent": "\n".join(input_sent_parts),
+                "formatted_first": formatted_first,
+                "formatted_second": "",
+            }
+        
+        # Build second input (data + response1 with separator + second prompt)
+        parts_second = data_parts.copy()
+        parts_second.append("")
+        parts_second.append(context_separator)
+        parts_second.append(llm_answer_first)
+        parts_second.append("")
+        if prompt_text_second:
+            parts_second.append(prompt_text_second)
+        
+        formatted_second = "\n".join(parts_second)
+        
+        # Add to input_sent (what was sent to second LLM)
+        input_sent_parts.append("")
+        input_sent_parts.append("=== SECOND CALL ===")
+        input_sent_parts.append(formatted_second)
+        
+        # Call second LLM
+        log(job_id, f"📤 Calling LLM (Second Call) for {job_type} (input: {len(formatted_second)} chars)")
+        ok_second, llm_answer, _raw_second = call_agent_llm_process(
+            client=client,
+            prompt=formatted_second,
+            job_type=job_type,
+            job_id=job_id,
+            metadata={**(metadata or {}), "call_number": 2},
+        )
+        
+        # Extract tokens from both calls
+        tokens_first = extract_tokens_from_llm_response(_raw_first) or 0
+        tokens_second = extract_tokens_from_llm_response(_raw_second) or 0
+        total_tokens = tokens_first + tokens_second
+        
+        # Build final input_sent from parts (uses actual variables sent to LLM)
+        input_sent = "\n".join(input_sent_parts)
+        
+        # Save job info after second call (regardless of success/failure)
+        if job_id is not None:
+            client.patch_agent_job(job_id, {
+                "input_sent": input_sent,
+                "result": llm_answer if ok_second else ""
+            })
+        
+        if not ok_second:
+            # Audit with combined tokens even on failure
+            duration_seconds = time.time() - start_time
+            call_audit_service(
+                action=job_type,
+                duration_seconds=duration_seconds,
+                status_code=500,
+                action_date=datetime.now(timezone.utc),
+                tokens_used=total_tokens,
+                query_params=job_params,
+                body=job_params,
+                job_id=job_id,
+            )
+            return False, "", total_tokens, {
+                "use_two_step_mode": True,
+                "input_sent": input_sent,
+                "formatted_first": formatted_first,
+                "formatted_second": formatted_second,
+            }
+        
+        # Log second response preview
+        preview_second = llm_answer[:500] if llm_answer else ""
+        log(job_id, f"\n📥 Second LLM Response Preview (first 500 chars):\n{preview_second}{'...' if len(llm_answer) > 500 else ''}\n")
+        
+        return True, llm_answer, total_tokens, {
+            "use_two_step_mode": True,
+            "input_sent": input_sent,
+            "formatted_first": formatted_first,
+            "formatted_second": formatted_second,
+        }
+    
+    else:
+        # ===== SINGLE-STEP MODE (FALLBACK) =====
+        # Build single input (data + prompt) - original format
+        parts = data_parts.copy()
+        if prompt_text:
+            parts.append(prompt_text)
+        
+        formatted = "\n".join(parts)
+        
+        # Save job info with original format
+        if job_id is not None:
+            client.patch_agent_job(job_id, {"input_sent": formatted})
+        
+        # Call LLM once
+        log(job_id, f"📤 Calling LLM for {job_type} (input: {len(formatted)} chars)")
+        ok, llm_answer, _raw = call_agent_llm_process(
+            client=client,
+            prompt=formatted,
+            job_type=job_type,
+            job_id=job_id,
+            metadata=metadata,
+        )
+        
+        if not ok:
+            # Extract tokens from single call for audit
+            tokens_used = extract_tokens_from_llm_response(_raw) or 0
+            duration_seconds = time.time() - start_time
+            call_audit_service(
+                action=job_type,
+                duration_seconds=duration_seconds,
+                status_code=500,
+                action_date=datetime.now(timezone.utc),
+                tokens_used=tokens_used,
+                query_params=job_params,
+                body=job_params,
+                job_id=job_id,
+            )
+            return False, "", tokens_used, {
+                "use_two_step_mode": False,
+                "input_sent": formatted,
+                "formatted": formatted,
+            }
+        
+        # Extract tokens from single call
+        tokens_used = extract_tokens_from_llm_response(_raw) or 0
+        
+        # Log response preview
+        preview = llm_answer[:500] if llm_answer else ""
+        log(job_id, f"\n📥 LLM Response Preview (first 500 chars):\n{preview}{'...' if len(llm_answer) > 500 else ''}\n")
+        
+        # Save result to job
+        if job_id is not None:
+            client.patch_agent_job(job_id, {"result": llm_answer})
+        
+        return True, llm_answer, tokens_used, {
+            "use_two_step_mode": False,
+            "input_sent": formatted,
+            "formatted": formatted,
+        }
 
 
 def process_llm_response_and_save_ai_card(

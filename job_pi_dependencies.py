@@ -5,19 +5,17 @@ from datetime import datetime, timezone
 
 import config
 from api_client import APIClient
-from llm_client import call_agent_llm_process
-from utils_audit import call_audit_service, extract_tokens_from_llm_response
+from utils_audit import call_audit_service
 from utils_logging import log
 from utils_processing import (
     extract_recommendations,
     extract_review_section,
     extract_text_and_json,
     get_pi_dependencies_for_analysis,
-    get_prompt_with_error_check,
     process_llm_response_and_save_ai_card,
+    process_llm_with_two_step_fallback,
     save_recommendations_from_json,
 )
-from utils_data_fetching import get_prompt_with_active_check
 
 
 def _extract_pi(job: Dict[str, Any]) -> str | None:
@@ -151,258 +149,41 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
         data_parts.append(outbound_formatted)
     data_parts.append("")
     
-    data_formatted = "\n".join(data_parts)
-
-    # ===== PROMPT FETCHING & MODE DECISION =====
-    # Try to fetch "PI Dependencies-1" with active status check
-    prompt_text_first, prompt_error, prompt_active, raw_response_first = get_prompt_with_active_check(
+    # Prepare job_params for audit service
+    job_params = {
+        "team_name": job.get("team_name"),
+        "group_name": job.get("group_name"),
+        "pi": pi,
+        "job_id": int(job_id) if job_id is not None else None,
+        "job_type": job_type,
+    }
+    
+    # Prepare metadata for LLM calls
+    metadata = {"pi_name": pi, "team_name": job.get("team_name")}
+    
+    # ===== LLM PROCESSING WITH TWO-STEP FALLBACK =====
+    ok, llm_answer, tokens_used, llm_metadata = process_llm_with_two_step_fallback(
         client=client,
-        email_address="PIAgent",
-        prompt_name="PI Dependencies-1",
-        job_type="PI Dependencies",
+        data_parts=data_parts,
+        prompt_base_name="PI Dependencies",
+        prompt_email="PIAgent",
+        job_type=job_type,
         job_id=int(job_id) if job_id is not None else None,
+        job_params=job_params,
+        metadata=metadata,
+        context_separator="LOCKED DECISION CONTEXT:",
+        start_time=start_time,
     )
     
-    use_two_step_mode = False
-    prompt_text = None
+    if not ok:
+        # Error already logged and audited by generic function
+        error_msg = "LLM processing failed" if not llm_answer else llm_answer
+        return False, error_msg
     
-    # Determine if we should use two-step mode or fallback to single-step
-    if not prompt_error and prompt_text_first and prompt_active:
-        use_two_step_mode = True
-        log(int(job_id) if job_id is not None else None, "✅ Using two-step mode: PI Dependencies-1 found and active")
-    else:
-        # Fallback: fetch "PI Dependencies" (original prompt)
-        fallback_reason = "not found" if prompt_error else "inactive"
-        log(int(job_id) if job_id is not None else None, f"⚠️ FALLBACK MODE: PI Dependencies-1 {fallback_reason}, using 'PI Dependencies'")
-        prompt_text, prompt_error_fallback = get_prompt_with_error_check(
-            client=client,
-            email_address="PIAgent",
-            prompt_name="PI Dependencies",
-            job_type="PI Dependencies",
-            job_id=int(job_id) if job_id is not None else None,
-        )
-        if prompt_error_fallback:
-            return False, prompt_error_fallback
-        use_two_step_mode = False
-
-    # ===== CONDITIONAL EXECUTION: TWO-STEP OR SINGLE-STEP =====
-    if use_two_step_mode:
-        # ===== TWO-STEP MODE =====
-        # Initialize input_sent_parts to build incrementally
-        input_sent_parts = []
-        
-        # Build first input (data + first prompt)
-        parts_first = data_parts.copy()
-        if prompt_text_first:
-            parts_first.append(prompt_text_first)
-        
-        formatted_first = "\n".join(parts_first)
-        
-        # Add to input_sent (what was sent to first LLM)
-        input_sent_parts.append("=== FIRST CALL ===")
-        input_sent_parts.append(formatted_first)
-
-        # Call first LLM
-        log(int(job_id) if job_id is not None else None, f"📤 Calling LLM (First Call) for PI Dependencies (input: {len(formatted_first)} chars)")
-        ok_first, llm_answer_first, _raw_first = call_agent_llm_process(
-            client=client,
-            prompt=formatted_first,
-            job_type="PI Dependencies",
-            job_id=int(job_id) if job_id is not None else None,
-            metadata={"pi_name": pi, "team_name": job.get("team_name"), "call_number": 1},
-        )
-        
-        if not ok_first:
-            # Extract tokens from first call for audit
-            tokens_first = extract_tokens_from_llm_response(_raw_first)
-            duration_seconds = time.time() - start_time
-            job_params = {
-                "team_name": job.get("team_name"),
-                "group_name": job.get("group_name"),
-                "pi": pi,
-                "job_id": int(job_id) if job_id is not None else None,
-                "job_type": job_type,
-            }
-            call_audit_service(
-                action=job_type,
-                duration_seconds=duration_seconds,
-                status_code=500,
-                action_date=datetime.now(timezone.utc),
-                tokens_used=tokens_first,
-                query_params=job_params,
-                body=job_params,
-                job_id=int(job_id) if job_id is not None else None,
-            )
-            return False, "First LLM call failed or returned empty response"
-        
-        # Log first response preview
-        preview_first = llm_answer_first[:500] if llm_answer_first else ""
-        log(int(job_id) if job_id is not None else None, f"\n📥 First LLM Response Preview (first 500 chars):\n{preview_first}{'...' if len(llm_answer_first) > 500 else ''}\n")
-        
-        # Add first response to input_sent
-        input_sent_parts.append("")
-        input_sent_parts.append("=== FIRST CALL RESPONSE ===")
-        input_sent_parts.append(llm_answer_first)
-
-        # ===== SECOND LLM CALL =====
-        # Fetch second prompt with error checking
-        prompt_text_second, prompt_error = get_prompt_with_error_check(
-            client=client,
-            email_address="PIAgent",
-            prompt_name="PI Dependencies-2",
-            job_type="PI Dependencies",
-            job_id=int(job_id) if job_id is not None else None,
-        )
-        
-        if prompt_error:
-            # Extract tokens from first call for audit even if second prompt fails
-            tokens_first = extract_tokens_from_llm_response(_raw_first)
-            duration_seconds = time.time() - start_time
-            job_params = {
-                "team_name": job.get("team_name"),
-                "group_name": job.get("group_name"),
-                "pi": pi,
-                "job_id": int(job_id) if job_id is not None else None,
-                "job_type": job_type,
-            }
-            call_audit_service(
-                action=job_type,
-                duration_seconds=duration_seconds,
-                status_code=500,
-                action_date=datetime.now(timezone.utc),
-                tokens_used=tokens_first,
-                query_params=job_params,
-                body=job_params,
-                job_id=int(job_id) if job_id is not None else None,
-            )
-            return False, prompt_error
-
-        # Build second input (data + response1 with separator + second prompt)
-        parts_second = data_parts.copy()
-        parts_second.append("")
-        parts_second.append("LOCKED DECISION CONTEXT:")
-        parts_second.append(llm_answer_first)
-        parts_second.append("")
-        if prompt_text_second:
-            parts_second.append(prompt_text_second)
-        
-        formatted_second = "\n".join(parts_second)
-        
-        # Add to input_sent (what was sent to second LLM)
-        input_sent_parts.append("")
-        input_sent_parts.append("=== SECOND CALL ===")
-        input_sent_parts.append(formatted_second)
-
-        # Call second LLM
-        log(int(job_id) if job_id is not None else None, f"📤 Calling LLM (Second Call) for PI Dependencies (input: {len(formatted_second)} chars)")
-        ok_second, llm_answer, _raw_second = call_agent_llm_process(
-            client=client,
-            prompt=formatted_second,
-            job_type="PI Dependencies",
-            job_id=int(job_id) if job_id is not None else None,
-            metadata={"pi_name": pi, "team_name": job.get("team_name"), "call_number": 2},
-        )
-        
-        # Extract tokens from both calls
-        tokens_first = extract_tokens_from_llm_response(_raw_first)
-        tokens_second = extract_tokens_from_llm_response(_raw_second)
-        total_tokens = tokens_first + tokens_second
-
-        # Build final input_sent from parts (uses actual variables sent to LLM)
-        input_sent = "\n".join(input_sent_parts)
-
-        # Save job info after second call (regardless of success/failure)
-        if job_id is not None:
-            client.patch_agent_job(int(job_id), {
-                "input_sent": input_sent,
-                "result": llm_answer if ok_second else ""
-            })
-
-        if not ok_second:
-            # Audit with combined tokens even on failure
-            duration_seconds = time.time() - start_time
-            job_params = {
-                "team_name": job.get("team_name"),
-                "group_name": job.get("group_name"),
-                "pi": pi,
-                "job_id": int(job_id) if job_id is not None else None,
-                "job_type": job_type,
-            }
-            call_audit_service(
-                action=job_type,
-                duration_seconds=duration_seconds,
-                status_code=500,
-                action_date=datetime.now(timezone.utc),
-                tokens_used=total_tokens,
-                query_params=job_params,
-                body=job_params,
-                job_id=int(job_id) if job_id is not None else None,
-            )
-            return False, "Second LLM call failed or returned empty response"
-    
-        # Log second response preview
-        preview_second = llm_answer[:500] if llm_answer else ""
-        log(int(job_id) if job_id is not None else None, f"\n📥 Second LLM Response Preview (first 500 chars):\n{preview_second}{'...' if len(llm_answer) > 500 else ''}\n")
-        
-        # Set tokens_used for audit (will be used in shared processing)
-        tokens_used = total_tokens
-    
-    else:
-        # ===== SINGLE-STEP MODE (FALLBACK) =====
-        # Build single input (data + prompt) - original format
-        parts = data_parts.copy()
-        if prompt_text:
-            parts.append(prompt_text)
-        
-        formatted = "\n".join(parts)
-        
-        # Save job info with original format
-        if job_id is not None:
-            client.patch_agent_job(int(job_id), {"input_sent": formatted})
-        
-        # Call LLM once
-        log(int(job_id) if job_id is not None else None, f"📤 Calling LLM for PI Dependencies (input: {len(formatted)} chars)")
-        ok, llm_answer, _raw = call_agent_llm_process(
-            client=client,
-            prompt=formatted,
-            job_type="PI Dependencies",
-            job_id=int(job_id) if job_id is not None else None,
-            metadata={"pi_name": pi, "team_name": job.get("team_name")},
-        )
-        
-        if not ok:
-            # Extract tokens from single call for audit
-            tokens_used = extract_tokens_from_llm_response(_raw)
-            duration_seconds = time.time() - start_time
-            job_params = {
-                "team_name": job.get("team_name"),
-                "group_name": job.get("group_name"),
-                "pi": pi,
-                "job_id": int(job_id) if job_id is not None else None,
-                "job_type": job_type,
-            }
-            call_audit_service(
-                action=job_type,
-                duration_seconds=duration_seconds,
-                status_code=500,
-                action_date=datetime.now(timezone.utc),
-                tokens_used=tokens_used,
-                query_params=job_params,
-                body=job_params,
-                job_id=int(job_id) if job_id is not None else None,
-            )
-            return False, "AI chat failed or returned empty response"
-        
-        # Extract tokens from single call
-        tokens_used = extract_tokens_from_llm_response(_raw)
-        
-        # Log response preview
-        preview = llm_answer[:500] if llm_answer else ""
-        log(int(job_id) if job_id is not None else None, f"\n📥 LLM Response Preview (first 500 chars):\n{preview}{'...' if len(llm_answer) > 500 else ''}\n")
-        
-        # Save result to job
-        if job_id is not None:
-            client.patch_agent_job(int(job_id), {"result": llm_answer})
+    use_two_step_mode = llm_metadata.get("use_two_step_mode", False)
+    formatted_first = llm_metadata.get("formatted_first", "")
+    formatted_second = llm_metadata.get("formatted_second", "")
+    formatted = llm_metadata.get("formatted", "")
 
     # ===== SHARED RESPONSE PROCESSING (BOTH MODES) =====
     # Extract structured content from LLM response and save card
@@ -476,6 +257,7 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     team_name = job.get("team_name", "Unknown")
     
     if use_two_step_mode:
+        # For two-step mode, we don't have llm_answer_first length, but we can show the structure
         result_text = f"""PI Dependencies Analysis Completed (Two-Step Process)
 
 PI: {pi}
@@ -484,7 +266,6 @@ Job ID: {job_id}
 Timestamp: {timestamp}
 
 First Call Input: {len(formatted_first)} characters
-First Call Response: {len(llm_answer_first)} characters
 Second Call Input: {len(formatted_second)} characters
 Final LLM Response Length: {len(llm_answer)} characters
 Total Tokens Used: {tokens_used}
@@ -508,16 +289,9 @@ Total Tokens Used: {tokens_used}
 {llm_answer}
 """
     
-    # Call audit service (always executed with tokens_used from both modes)
+    # Call audit service for success (always executed with tokens_used from both modes)
     duration_seconds = time.time() - start_time
     status_code = 200
-    job_params = {
-        "team_name": job.get("team_name"),
-        "group_name": job.get("group_name"),
-        "pi": pi,
-        "job_id": int(job_id) if job_id is not None else None,
-        "job_type": job_type,
-    }
     call_audit_service(
         action=job_type,
         duration_seconds=duration_seconds,
