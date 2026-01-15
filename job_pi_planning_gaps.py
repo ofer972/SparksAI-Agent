@@ -5,8 +5,7 @@ from datetime import datetime, timezone
 
 import config
 from api_client import APIClient
-from llm_client import call_agent_llm_process
-from utils_audit import call_audit_service, extract_tokens_from_llm_response
+from utils_audit import call_audit_service
 from utils_logging import log
 from utils_processing import (
     extract_recommendations,
@@ -17,8 +16,8 @@ from utils_processing import (
     get_epics_average_velocity_for_analysis,
     get_epics_by_pi_for_analysis,
     get_pi_status_for_today_by_team_for_analysis,
-    get_prompt_with_error_check,
     process_llm_response_and_save_ai_card,
+    process_llm_with_two_step_fallback,
     save_recommendations_from_json,
 )
 
@@ -213,19 +212,7 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
         num_pis=3,  # Default: analyze last 3 completed PIs
     )
 
-    # Fetch prompt with error checking
-    prompt_text, prompt_error = get_prompt_with_error_check(
-        client=client,
-        email_address="PIAgent",
-        prompt_name="PI Planning Gaps",
-        job_type="PI Planning Gaps",
-        job_id=int(job_id) if job_id is not None else None,
-    )
-    
-    if prompt_error:
-        return False, prompt_error
-
-    # Build formatted input with header (PI, dates, current date)
+    # Build data string (without prompt)
     parts = ["=== PI PLANNING GAPS DATA ==="]
     parts.append(f"PI: {pi}")
     if pi_start_date:
@@ -257,46 +244,35 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     parts.append(epics_velocity_formatted)
     parts.append("")
     
-    # Add prompt (already includes markers from get_prompt_with_error_check)
-    if prompt_text:
-        parts.append(prompt_text)
+    data_string = "\n".join(parts)
     
-    formatted = "\n".join(parts)
+    # Prepare job_params for audit service
+    job_params = {
+        "team_name": job.get("team_name"),
+        "group_name": job.get("group_name"),
+        "pi": pi,
+        "job_id": int(job_id) if job_id is not None else None,
+        "job_type": job_type,
+    }
     
-    if job_id is not None:
-        client.patch_agent_job(int(job_id), {"input_sent": formatted})
-
-    # Call dedicated agent LLM processing endpoint
-    log(int(job_id) if job_id is not None else None, f"📤 Calling LLM for PI Planning Gaps (input: {len(formatted)} chars)")
-    ok, llm_answer, _raw = call_agent_llm_process(
+    # Prepare metadata for LLM calls
+    metadata = {"pi_name": pi, "team_name": job.get("team_name")}
+    
+    # Call generic LLM processing function (handles prompt fetching and two-step mode)
+    ok, llm_answer, tokens_used, llm_metadata = process_llm_with_two_step_fallback(
         client=client,
-        prompt=formatted,
-        job_type="PI Planning Gaps",
+        data_string=data_string,
+        prompt_base_name="PI Planning Gaps",
+        prompt_email="PIAgent",
+        job_type=job_type,
         job_id=int(job_id) if job_id is not None else None,
-        metadata={"pi_name": pi, "team_name": job.get("team_name")},
+        job_params=job_params,
+        metadata=metadata,
+        start_time=start_time,
     )
+    
     if not ok:
-        # Call audit service for failure case
-        duration_seconds = time.time() - start_time
-        tokens_used = extract_tokens_from_llm_response(_raw)
-        job_params = {
-            "team_name": job.get("team_name"),
-            "group_name": job.get("group_name"),
-            "pi": pi,
-            "job_id": int(job_id) if job_id is not None else None,
-            "job_type": job_type,
-        }
-        call_audit_service(
-            action=job_type,
-            duration_seconds=duration_seconds,
-            status_code=500,
-            action_date=datetime.now(timezone.utc),
-            tokens_used=tokens_used,
-            query_params=job_params,
-            body=job_params,
-            job_id=int(job_id) if job_id is not None else None,
-        )
-        return False, "AI chat failed or returned empty response"
+        return False, "LLM processing failed"
 
     # Print first 500 characters of LLM response
     preview = llm_answer[:500] if llm_answer else ""
@@ -368,10 +344,32 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
             if recommendations_saved >= 2:
                 break
 
-    # Create detailed result text with full LLM response (like old system)
+    # Create detailed result text with full LLM response
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     team_name = job.get("team_name", "Unknown")
-    result_text = f"""PI Planning Gaps Analysis Completed
+    use_two_step_mode = llm_metadata.get("use_two_step_mode", False)
+    
+    if use_two_step_mode:
+        formatted_first = llm_metadata.get("formatted_first", "")
+        formatted_second = llm_metadata.get("formatted_second", "")
+        result_text = f"""PI Planning Gaps Analysis Completed (Two-Step Process)
+
+PI: {pi}
+Team: {team_name}
+Job ID: {job_id}
+Timestamp: {timestamp}
+
+First Call Input: {len(formatted_first)} characters
+Second Call Input: {len(formatted_second)} characters
+Final LLM Response Length: {len(llm_answer)} characters
+Total Tokens Used: {tokens_used}
+
+=== AI ANALYSIS (Final Response) ===
+{llm_answer}
+"""
+    else:
+        formatted = llm_metadata.get("formatted", "")
+        result_text = f"""PI Planning Gaps Analysis Completed
 
 PI: {pi}
 Team: {team_name}
@@ -380,22 +378,15 @@ Timestamp: {timestamp}
 
 Data Sent to LLM: {len(formatted)} characters
 LLM Response Length: {len(llm_answer)} characters
+Total Tokens Used: {tokens_used}
 
 === AI ANALYSIS ===
 {llm_answer}
 """
     
-    # Call audit service
+    # Call audit service for success
     duration_seconds = time.time() - start_time
     status_code = 200
-    tokens_used = extract_tokens_from_llm_response(_raw)
-    job_params = {
-        "team_name": job.get("team_name"),
-        "group_name": job.get("group_name"),
-        "pi": pi,
-        "job_id": int(job_id) if job_id is not None else None,
-        "job_type": job_type,
-    }
     call_audit_service(
         action=job_type,
         duration_seconds=duration_seconds,

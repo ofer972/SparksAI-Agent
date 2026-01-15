@@ -5,18 +5,18 @@ from datetime import datetime, timezone
 
 import config
 from api_client import APIClient
-from llm_client import call_agent_llm_process
-from utils_audit import call_audit_service, extract_tokens_from_llm_response
+from utils_audit import call_audit_service
 from utils_logging import log
 from utils_processing import (
     extract_recommendations,
     extract_review_section,
     extract_text_and_json,
     fetch_pi_data_for_analysis,
-    format_pi_analysis_input,
-    get_prompt_with_error_check,
+    format_burndown_markdown,
+    format_pi_status,
     get_transcripts_for_analysis,
     process_llm_response_and_save_ai_card,
+    process_llm_with_two_step_fallback,
     save_recommendations_from_json,
 )
 
@@ -80,68 +80,80 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
         include_transcript=False,  # Already fetched above
     )
 
-    # Fetch prompt with error checking
-    prompt_text, prompt_error = get_prompt_with_error_check(
+    # Build data string (will be reused for both calls if two-step mode)
+    data_parts = ["=== PI SYNC DATA ==="]
+    data_parts.append(f"PI: {pi}")
+    if team_param:
+        if is_group:
+            data_parts.append(f"Group: {team_param}")
+        else:
+            data_parts.append(f"Team: {team_param}")
+    data_parts.append("")
+    
+    # Add transcript section
+    data_parts.append("-- Latest Transcript --")
+    data_parts.append(transcript_formatted)
+    data_parts.append("")
+    
+    # Add PI status section
+    data_parts.append("-- PI status for current date --")
+    data_parts.append(format_pi_status(pi_status_obj))
+    data_parts.append("")
+    
+    # Add burndown section
+    data_parts.append("-- PI Burndown Snapshot --")
+    data_parts.append(format_burndown_markdown(burndown_obj))
+    data_parts.append("")
+    
+    data_string = "\n".join(data_parts)
+    
+    # Prepare job_params for audit service
+    job_params = {
+        "team_name": job.get("team_name"),
+        "group_name": job.get("group_name"),
+        "pi": pi,
+        "job_id": int(job_id) if job_id is not None else None,
+        "job_type": job_type,
+    }
+    
+    # Prepare metadata for LLM calls
+    metadata = {"pi_name": pi, "team_name": job.get("team_name")}
+    
+    # ===== LLM PROCESSING WITH TWO-STEP FALLBACK =====
+    ok, llm_answer, tokens_used, llm_metadata = process_llm_with_two_step_fallback(
         client=client,
-        email_address="PIAgent",
-        prompt_name="PISync",
-        job_type="PI Sync",
+        data_string=data_string,
+        prompt_base_name="PISync",
+        prompt_email="PIAgent",
+        job_type=job_type,
         job_id=int(job_id) if job_id is not None else None,
+        job_params=job_params,
+        metadata=metadata,
+        context_separator="LOCKED DECISION CONTEXT:",
+        start_time=start_time,
     )
     
-    if prompt_error:
-        return False, prompt_error
-
-    # Build formatted input and update input_sent
-    formatted = format_pi_analysis_input(
-        transcript=transcript_formatted,  # Pass formatted string
-        pi_status=pi_status_obj,
-        burndown=burndown_obj,
-        prompt=prompt_text,
-        header_title="PI SYNC DATA",
-        include_transcript_section=True,
-    )
-    if job_id is not None:
-        client.patch_agent_job(int(job_id), {"input_sent": formatted})
-
-    # Call dedicated agent LLM processing endpoint
-    log(int(job_id) if job_id is not None else None, f"📤 Calling LLM for PI Sync (input: {len(formatted)} chars)")
-    ok, llm_answer, _raw = call_agent_llm_process(
-        client=client,
-        prompt=formatted,
-        job_type="PI Sync",
-        job_id=int(job_id) if job_id is not None else None,
-        metadata={"pi_name": pi, "team_name": job.get("team_name")},
-    )
     if not ok:
-        # Call audit service for failure case
-        duration_seconds = time.time() - start_time
-        tokens_used = extract_tokens_from_llm_response(_raw)
-        job_params = {
-            "team_name": job.get("team_name"),
-            "group_name": job.get("group_name"),
-            "pi": pi,
-            "job_id": int(job_id) if job_id is not None else None,
-            "job_type": job_type,
-        }
-        call_audit_service(
-            action=job_type,
-            duration_seconds=duration_seconds,
-            status_code=500,
-            action_date=datetime.now(timezone.utc),
-            tokens_used=tokens_used,
-            query_params=job_params,
-            body=job_params,
-            job_id=int(job_id) if job_id is not None else None,
-        )
-        return False, "AI chat failed or returned empty response"
+        # Error already logged and audited by generic function
+        error_msg = "LLM processing failed" if not llm_answer else llm_answer
+        return False, error_msg
+    
+    use_two_step_mode = llm_metadata.get("use_two_step_mode", False)
+    formatted_first = llm_metadata.get("formatted_first", "")
+    formatted_second = llm_metadata.get("formatted_second", "")
+    formatted = llm_metadata.get("formatted", "")
+    input_sent = llm_metadata.get("input_sent", "")
+    
+    # Update input_sent in job (use the complete input_sent from metadata)
+    if job_id is not None and input_sent:
+        client.patch_agent_job(int(job_id), {"input_sent": input_sent})
 
     # Print first 500 characters of LLM response
     preview = llm_answer[:500] if llm_answer else ""
     log(int(job_id) if job_id is not None else None, f"\n📥 LLM Response Preview (first 500 chars):\n{preview}{'...' if len(llm_answer) > 500 else ''}\n")
 
     # Extract structured content from LLM response and save card
-    log(int(job_id) if job_id is not None else None, "📋 EXTRACTING STRUCTURED CONTENT FROM LLM RESPONSE")
+    log(int(job_id) if job_id is not None else None, "📋 EXTRACTING STRUCTURED CONTENT FROM LLM RESPONSE (Final Response)")
     
     description, full_info_truncated, raw_json_string, card_id = process_llm_response_and_save_ai_card(
         client=client,
@@ -206,10 +218,29 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
             if recommendations_saved >= 2:
                 break
 
-    # Create detailed result text with full LLM response (like old system)
+    # Create detailed result text with full LLM response
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     team_name = job.get("team_name", "Unknown")
-    result_text = f"""PI Sync Analysis Completed
+    
+    if use_two_step_mode:
+        # For two-step mode, show both calls info
+        result_text = f"""PI Sync Analysis Completed (Two-Step Process)
+
+PI: {pi}
+Team: {team_name}
+Job ID: {job_id}
+Timestamp: {timestamp}
+
+First Call Input: {len(formatted_first)} characters
+Second Call Input: {len(formatted_second)} characters
+Final LLM Response Length: {len(llm_answer)} characters
+Total Tokens Used: {tokens_used}
+
+=== AI ANALYSIS (Final Response) ===
+{llm_answer}
+"""
+    else:
+        result_text = f"""PI Sync Analysis Completed
 
 PI: {pi}
 Team: {team_name}
@@ -218,22 +249,15 @@ Timestamp: {timestamp}
 
 Data Sent to LLM: {len(formatted)} characters
 LLM Response Length: {len(llm_answer)} characters
+Total Tokens Used: {tokens_used}
 
 === AI ANALYSIS ===
 {llm_answer}
 """
     
-    # Call audit service
+    # Call audit service for success (always executed with tokens_used from both modes)
     duration_seconds = time.time() - start_time
     status_code = 200
-    tokens_used = extract_tokens_from_llm_response(_raw)
-    job_params = {
-        "team_name": job.get("team_name"),
-        "group_name": job.get("group_name"),
-        "pi": pi,
-        "job_id": int(job_id) if job_id is not None else None,
-        "job_type": job_type,
-    }
     call_audit_service(
         action=job_type,
         duration_seconds=duration_seconds,

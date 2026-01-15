@@ -111,7 +111,7 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
         log(int(job_id) if job_id is not None else None, f"❌ {error_msg}")
         return True, error_msg
 
-    # Build data parts (will be reused for both calls)
+    # Build data string (will be reused for both calls)
     data_parts = ["=== PI DEPENDENCIES DATA ==="]
     data_parts.append(f"PI: {pi}")
     if pi_start_date:
@@ -149,6 +149,8 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
         data_parts.append(outbound_formatted)
     data_parts.append("")
     
+    data_string = "\n".join(data_parts)
+    
     # Prepare job_params for audit service
     job_params = {
         "team_name": job.get("team_name"),
@@ -164,7 +166,7 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     # ===== LLM PROCESSING WITH TWO-STEP FALLBACK =====
     ok, llm_answer, tokens_used, llm_metadata = process_llm_with_two_step_fallback(
         client=client,
-        data_parts=data_parts,
+        data_string=data_string,
         prompt_base_name="PI Dependencies",
         prompt_email="PIAgent",
         job_type=job_type,

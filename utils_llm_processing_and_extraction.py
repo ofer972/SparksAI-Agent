@@ -391,7 +391,7 @@ def extract_pi_sync_review(llm_response: str) -> str | None:
 
 def process_llm_with_two_step_fallback(
     client: APIClient,
-    data_parts: List[str],
+    data_string: str,
     prompt_base_name: str,
     prompt_email: str,
     job_type: str,
@@ -410,7 +410,7 @@ def process_llm_with_two_step_fallback(
     
     Args:
         client: APIClient instance
-        data_parts: List of strings to build the data section (will be reused for both calls)
+        data_string: Data string (without prompt) that will be reused for both calls in two-step mode
         prompt_base_name: Base prompt name (e.g., "PI Dependencies")
         prompt_email: Email address for prompt (e.g., "PIAgent")
         job_type: Job type string (e.g., "PI Dependencies")
@@ -484,11 +484,7 @@ def process_llm_with_two_step_fallback(
     if use_two_step_mode:
         # ===== TWO-STEP MODE =====
         # Build first input (data + first prompt)
-        parts_first = data_parts.copy()
-        if prompt_text_first:
-            parts_first.append(prompt_text_first)
-        
-        formatted_first = "\n".join(parts_first)
+        formatted_first = data_string + "\n" + prompt_text_first if prompt_text_first else data_string
         
         # Add to input_sent (what was sent to first LLM)
         input_sent_parts.append("=== FIRST CALL ===")
@@ -566,15 +562,9 @@ def process_llm_with_two_step_fallback(
             }
         
         # Build second input (data + response1 with separator + second prompt)
-        parts_second = data_parts.copy()
-        parts_second.append("")
-        parts_second.append(context_separator)
-        parts_second.append(llm_answer_first)
-        parts_second.append("")
+        formatted_second = data_string + "\n\n" + context_separator + "\n" + llm_answer_first + "\n"
         if prompt_text_second:
-            parts_second.append(prompt_text_second)
-        
-        formatted_second = "\n".join(parts_second)
+            formatted_second += prompt_text_second
         
         # Add to input_sent (what was sent to second LLM)
         input_sent_parts.append("")
@@ -640,11 +630,7 @@ def process_llm_with_two_step_fallback(
     else:
         # ===== SINGLE-STEP MODE (FALLBACK) =====
         # Build single input (data + prompt) - original format
-        parts = data_parts.copy()
-        if prompt_text:
-            parts.append(prompt_text)
-        
-        formatted = "\n".join(parts)
+        formatted = data_string + "\n" + prompt_text if prompt_text else data_string
         
         # Save job info with original format
         if job_id is not None:

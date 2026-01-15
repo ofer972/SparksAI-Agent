@@ -4,16 +4,16 @@ from typing import Any, Dict, Tuple
 from datetime import datetime, timezone
 
 from api_client import APIClient
-from llm_client import call_agent_llm_process
-from utils_audit import call_audit_service, extract_tokens_from_llm_response
+from utils_audit import call_audit_service
 from utils_processing import (
     extract_recommendations,
     extract_review_section,
     extract_text_and_json,
     fetch_pi_data_for_analysis,
-    format_pi_analysis_input,
-    get_prompt_with_error_check,
+    format_burndown_markdown,
+    format_pi_status,
     process_llm_response_and_save_ai_card,
+    process_llm_with_two_step_fallback,
     save_recommendations_from_json,
 )
 
@@ -63,61 +63,44 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
         include_transcript=False,  # Team PI Insight doesn't use transcript
     )
 
-    # Fetch prompt with error checking
-    prompt_text, prompt_error = get_prompt_with_error_check(
+    # Build data string (without prompt) - same structure as format_pi_analysis_input but without prompt
+    parts = ["===TEAM PI INSIGHT DATA==="]
+    parts.append("-- PI status for current date --")
+    parts.append(format_pi_status(pi_status_obj))
+    parts.append("")
+    parts.append("-- PI Burndown Snapshot --")
+    parts.append(format_burndown_markdown(burndown_obj))
+    parts.append("")
+    
+    data_string = "\n".join(parts)
+    
+    # Prepare job_params for audit service
+    job_params = {
+        "team_name": team_name,
+        "group_name": job.get("group_name"),
+        "pi": pi,
+        "job_id": int(job_id) if job_id is not None else None,
+        "job_type": job_type,
+    }
+    
+    # Prepare metadata for LLM calls
+    metadata = {"pi_name": pi, "team_name": team_name}
+    
+    # Call generic LLM processing function (handles prompt fetching and two-step mode)
+    ok, llm_answer, tokens_used, llm_metadata = process_llm_with_two_step_fallback(
         client=client,
-        email_address="TeamAgent",
-        prompt_name="Team PI Insights",
-        job_type="Team PI Insight",
+        data_string=data_string,
+        prompt_base_name="Team PI Insights",
+        prompt_email="TeamAgent",
+        job_type=job_type,
         job_id=int(job_id) if job_id is not None else None,
+        job_params=job_params,
+        metadata=metadata,
+        start_time=start_time,
     )
     
-    if prompt_error:
-        return False, prompt_error
-
-    # Build formatted input and update input_sent
-    formatted = format_pi_analysis_input(
-        transcript=transcript_obj,
-        pi_status=pi_status_obj,
-        burndown=burndown_obj,
-        prompt=prompt_text,
-        header_title="TEAM PI INSIGHT DATA",
-        include_transcript_section=False,  # Don't include transcript section
-    )
-    if job_id is not None:
-        client.patch_agent_job(int(job_id), {"input_sent": formatted})
-
-    # Call dedicated agent LLM processing endpoint
-    print(f"📤 Calling LLM for Team PI Insight (input: {len(formatted)} chars)")
-    ok, llm_answer, _raw = call_agent_llm_process(
-        client=client,
-        prompt=formatted,
-        job_type="Team PI Insight",
-        job_id=int(job_id) if job_id is not None else None,
-        metadata={"pi_name": pi, "team_name": team_name},
-    )
     if not ok:
-        # Call audit service for failure case
-        duration_seconds = time.time() - start_time
-        tokens_used = extract_tokens_from_llm_response(_raw)
-        job_params = {
-            "team_name": team_name,
-            "group_name": job.get("group_name"),
-            "pi": pi,
-            "job_id": int(job_id) if job_id is not None else None,
-            "job_type": job_type,
-        }
-        call_audit_service(
-            action=job_type,
-            duration_seconds=duration_seconds,
-            status_code=500,
-            action_date=datetime.now(timezone.utc),
-            tokens_used=tokens_used,
-            query_params=job_params,
-            body=job_params,
-            job_id=int(job_id) if job_id is not None else None,
-        )
-        return False, "AI chat failed or returned empty response"
+        return False, "LLM processing failed"
 
     # Print first 500 characters of LLM response
     preview = llm_answer[:500] if llm_answer else ""
@@ -188,9 +171,31 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
             if recommendations_saved >= 2:
                 break
 
-    # Create detailed result text with full LLM response (like old system)
+    # Create detailed result text with full LLM response
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-    result_text = f"""Team PI Insight Analysis Completed
+    use_two_step_mode = llm_metadata.get("use_two_step_mode", False)
+    
+    if use_two_step_mode:
+        formatted_first = llm_metadata.get("formatted_first", "")
+        formatted_second = llm_metadata.get("formatted_second", "")
+        result_text = f"""Team PI Insight Analysis Completed (Two-Step Process)
+
+PI: {pi}
+Team: {team_name}
+Job ID: {job_id}
+Timestamp: {timestamp}
+
+First Call Input: {len(formatted_first)} characters
+Second Call Input: {len(formatted_second)} characters
+Final LLM Response Length: {len(llm_answer)} characters
+Total Tokens Used: {tokens_used}
+
+=== AI ANALYSIS (Final Response) ===
+{llm_answer}
+"""
+    else:
+        formatted = llm_metadata.get("formatted", "")
+        result_text = f"""Team PI Insight Analysis Completed
 
 PI: {pi}
 Team: {team_name}
@@ -199,22 +204,15 @@ Timestamp: {timestamp}
 
 Data Sent to LLM: {len(formatted)} characters
 LLM Response Length: {len(llm_answer)} characters
+Total Tokens Used: {tokens_used}
 
 === AI ANALYSIS ===
 {llm_answer}
 """
     
-    # Call audit service
+    # Call audit service for success
     duration_seconds = time.time() - start_time
     status_code = 200
-    tokens_used = extract_tokens_from_llm_response(_raw)
-    job_params = {
-        "team_name": team_name,
-        "group_name": job.get("group_name"),
-        "pi": pi,
-        "job_id": int(job_id) if job_id is not None else None,
-        "job_type": job_type,
-    }
     call_audit_service(
         action=job_type,
         duration_seconds=duration_seconds,

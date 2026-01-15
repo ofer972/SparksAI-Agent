@@ -4,18 +4,17 @@ from datetime import datetime, timezone
 
 import config
 from api_client import APIClient
-from llm_client import call_agent_llm_process
-from utils_audit import call_audit_service, extract_tokens_from_llm_response
+from utils_audit import call_audit_service
 from utils_logging import log
 from utils_processing import (
     extract_recommendations,
     extract_text_and_json,
     extract_review_section,
-    get_prompt_with_error_check,
     save_recommendations_from_json,
     get_active_sprint_summary_by_team_for_analysis,
     get_sprint_issues_with_epic_for_analysis,
     process_llm_response_and_save_ai_card,
+    process_llm_with_two_step_fallback,
 )
 
 
@@ -49,25 +48,7 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     # Step 2: Get JIRA issues for the sprint with epic data (formatted)
     jira_issues_formatted = get_sprint_issues_with_epic_for_analysis(client, sprint_id, team_name)
     
-    # Step 4: Fetch prompt
-    prompt_text, prompt_error = get_prompt_with_error_check(
-        client=client,
-        email_address="TeamAgent",
-        prompt_name="Sprint Goal",
-        job_type="Sprint Goal",
-        job_id=int(job_id) if job_id is not None else None,
-    )
-    
-    if prompt_error:
-        log(int(job_id) if job_id is not None else None, "❌ Prompt not found")
-        return False, prompt_error
-    
-    if prompt_text:
-        log(int(job_id) if job_id is not None else None, "✅ Prompt found")
-    else:
-        log(int(job_id) if job_id is not None else None, "❌ Prompt not found")
-    
-    # Step 3: Format data using the new helper functions
+    # Build data string (without prompt)
     parts = ["SPRINT GOAL ANALYSIS DATA", "=" * 50, ""]
     
     # Add formatted sprint summary (includes sprint goal and all sprint data)
@@ -76,48 +57,35 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     # Add formatted JIRA issues
     parts.append(jira_issues_formatted)
     
-    # ANALYSIS PROMPT section (already includes markers from get_prompt_with_error_check)
-    if prompt_text:
-        parts.append(prompt_text)
-        parts.append("")
+    data_string = "\n".join(parts)
     
-    formatted = "\n".join(parts)
-
-    if job_id is not None:
-        client.patch_agent_job(int(job_id), {"input_sent": formatted})
-
-    # Call dedicated agent LLM processing endpoint
-    log(int(job_id) if job_id is not None else None, f"📤 Calling LLM for Sprint Goal (input: {len(formatted)} chars)")
-    ok, llm_answer, _raw = call_agent_llm_process(
+    # Prepare job_params for audit service
+    job_params = {
+        "team_name": team_name,
+        "group_name": job.get("group_name"),
+        "pi": job.get("pi"),
+        "job_id": int(job_id) if job_id is not None else None,
+        "job_type": job_type,
+    }
+    
+    # Prepare metadata for LLM calls
+    metadata = {"team_name": team_name}
+    
+    # Call generic LLM processing function (handles prompt fetching and two-step mode)
+    ok, llm_answer, tokens_used, llm_metadata = process_llm_with_two_step_fallback(
         client=client,
-        prompt=formatted,
-        job_type="Sprint Goal",
+        data_string=data_string,
+        prompt_base_name="Sprint Goal",
+        prompt_email="TeamAgent",
+        job_type=job_type,
         job_id=int(job_id) if job_id is not None else None,
-        metadata={"team_name": team_name},
+        job_params=job_params,
+        metadata=metadata,
+        start_time=start_time,
     )
     
-    if not ok or not llm_answer:
-        # Call audit service for failure case
-        duration_seconds = time.time() - start_time
-        tokens_used = extract_tokens_from_llm_response(_raw)
-        job_params = {
-            "team_name": team_name,
-            "group_name": job.get("group_name"),
-            "pi": job.get("pi"),
-            "job_id": int(job_id) if job_id is not None else None,
-            "job_type": job_type,
-        }
-        call_audit_service(
-            action=job_type,
-            duration_seconds=duration_seconds,
-            status_code=500,
-            action_date=datetime.now(timezone.utc),
-            tokens_used=tokens_used,
-            query_params=job_params,
-            body=job_params,
-            job_id=int(job_id) if job_id is not None else None,
-        )
-        return False, "AI chat failed or returned empty response"
+    if not ok:
+        return False, "LLM processing failed"
 
     # Print first 500 characters of LLM response
     preview = llm_answer[:500] if llm_answer else ""
@@ -185,9 +153,30 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
             if recommendations_saved >= 2:
                 break
 
-    # Create detailed result text with full LLM response (like old system)
+    # Create detailed result text with full LLM response
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-    result_text = f"""Sprint Goal Analysis Completed
+    use_two_step_mode = llm_metadata.get("use_two_step_mode", False)
+    
+    if use_two_step_mode:
+        formatted_first = llm_metadata.get("formatted_first", "")
+        formatted_second = llm_metadata.get("formatted_second", "")
+        result_text = f"""Sprint Goal Analysis Completed (Two-Step Process)
+
+Team: {team_name}
+Job ID: {job_id}
+Timestamp: {timestamp}
+
+First Call Input: {len(formatted_first)} characters
+Second Call Input: {len(formatted_second)} characters
+Final LLM Response Length: {len(llm_answer)} characters
+Total Tokens Used: {tokens_used}
+
+=== AI ANALYSIS (Final Response) ===
+{llm_answer}
+"""
+    else:
+        formatted = llm_metadata.get("formatted", "")
+        result_text = f"""Sprint Goal Analysis Completed
 
 Team: {team_name}
 Job ID: {job_id}
@@ -195,22 +184,15 @@ Timestamp: {timestamp}
 
 Data Sent to LLM: {len(formatted)} characters
 LLM Response Length: {len(llm_answer)} characters
+Total Tokens Used: {tokens_used}
 
 === AI ANALYSIS ===
 {llm_answer}
 """
     
-    # Call audit service
+    # Call audit service for success
     duration_seconds = time.time() - start_time
     status_code = 200
-    tokens_used = extract_tokens_from_llm_response(_raw)
-    job_params = {
-        "team_name": team_name,
-        "group_name": job.get("group_name"),
-        "pi": job.get("pi"),
-        "job_id": int(job_id) if job_id is not None else None,
-        "job_type": job_type,
-    }
     call_audit_service(
         action=job_type,
         duration_seconds=duration_seconds,
