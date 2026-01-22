@@ -202,18 +202,19 @@ def extract_content_between_markers(
         return ""
 
 
-def extract_json_sections(parsed_json: Dict[str, Any] | List[Any]) -> Tuple[str, str, str | None]:
+def extract_json_sections(parsed_json: Dict[str, Any] | List[Any]) -> Tuple[str, str, str | None, str | None]:
     """
-    Extract DashboardSummary, Recommendations, and CriticalityDetermination from parsed JSON
+    Extract DashboardSummary, Recommendations, CriticalityDetermination, and PrimaryFocus from parsed JSON
     
     Args:
         parsed_json: Parsed JSON object
     
     Returns:
-        tuple: (dashboard_summary_json, recommendations_json, criticality_determination) where:
+        tuple: (dashboard_summary_json, recommendations_json, criticality_determination, primary_focus) where:
             dashboard_summary_json: JSON string of DashboardSummary
             recommendations_json: JSON string of Recommendations
             criticality_determination: CriticalityDetermination value or None
+            primary_focus: PrimaryFocus value or None (fallback to first 100 chars of first DashboardSummary item)
     """
     try:
         # Handle both dict and list inputs
@@ -222,6 +223,7 @@ def extract_json_sections(parsed_json: Dict[str, Any] | List[Any]) -> Tuple[str,
             dashboard_summary = []
             recommendations = []
             criticality_determination = None
+            primary_focus = None
             for item in parsed_json:
                 if isinstance(item, dict):
                     if 'Dashboard_Summary' in item or 'Dashboard Summary' in item or 'DashboardSummary' in item:
@@ -230,14 +232,32 @@ def extract_json_sections(parsed_json: Dict[str, Any] | List[Any]) -> Tuple[str,
                         recommendations.append(item.get('Recommendations', []))
                     if 'CriticalityDetermination' in item and criticality_determination is None:
                         criticality_determination = item.get('CriticalityDetermination')
+                    # Extract PrimaryFocus (case-insensitive search only)
+                    if primary_focus is None:
+                        for key in item.keys():
+                            if key.lower() == 'primaryfocus':
+                                primary_focus = item[key]
+                                break
             dashboard_summary_json = json.dumps(dashboard_summary) if dashboard_summary else ""
             recommendations_json = json.dumps(recommendations[0] if recommendations else []) if recommendations else ""
-            return dashboard_summary_json, recommendations_json, criticality_determination
+            
+            # Fallback: Use first 100 chars of first DashboardSummary item if PrimaryFocus not found
+            if primary_focus is None and dashboard_summary and len(dashboard_summary) > 0:
+                first_item = dashboard_summary[0]
+                if isinstance(first_item, dict):
+                    fallback_text = first_item.get('text') or first_item.get('description') or str(first_item)
+                else:
+                    fallback_text = str(first_item)
+                primary_focus = fallback_text[:100] if fallback_text else None
+                if primary_focus:
+                    print(f"ℹ️ Using first 100 chars of DashboardSummary as fallback for PrimaryFocus")
+            
+            return dashboard_summary_json, recommendations_json, criticality_determination, primary_focus
         
         # Handle dict input
         if not isinstance(parsed_json, dict):
             print(f"⚠️ Unexpected JSON type: {type(parsed_json)}")
-            return "", "", None
+            return "", "", None, None
         
         # Debug: Print all available keys
         available_keys = list(parsed_json.keys())
@@ -272,26 +292,52 @@ def extract_json_sections(parsed_json: Dict[str, Any] | List[Any]) -> Tuple[str,
         else:
             print(f"ℹ️ No CriticalityDetermination found in JSON")
         
+        # Extract PrimaryFocus (case-insensitive search only - no permutations)
+        primary_focus = None
+        for key in parsed_json.keys():
+            if key.lower() == 'primaryfocus':
+                primary_focus = parsed_json[key]
+                break
+        
+        if primary_focus:
+            print(f"✅ Found PrimaryFocus: {primary_focus[:100]}...")
+        else:
+            print(f"Primary focus not found")
+            # Fallback: Use first 100 chars of first DashboardSummary item
+            if dashboard_summary and isinstance(dashboard_summary, list) and len(dashboard_summary) > 0:
+                first_item = dashboard_summary[0]
+                if isinstance(first_item, dict):
+                    # Try to get text from common fields
+                    fallback_text = first_item.get('text') or first_item.get('description') or str(first_item)
+                else:
+                    fallback_text = str(first_item)
+                primary_focus = fallback_text[:100] if fallback_text else None
+                if primary_focus:
+                    print(f"ℹ️ Using first 100 chars of DashboardSummary as fallback")
+            else:
+                print(f"ℹ️ No PrimaryFocus found and no DashboardSummary available")
+        
         print(f"✅ Extracted sections: DashboardSummary={len(dashboard_summary) if isinstance(dashboard_summary, list) else 0} items, Recommendations={len(recommendations) if isinstance(recommendations, list) else 0} items")
-        return dashboard_summary_json, recommendations_json, criticality_determination
+        return dashboard_summary_json, recommendations_json, criticality_determination, primary_focus
         
     except Exception as e:
         print(f"❌ Error extracting JSON sections: {e}")
-        return "", "", None
+        return "", "", None, None
 
 
-def extract_text_and_json(llm_response: str) -> Tuple[str, str, str, str, str | None]:
+def extract_text_and_json(llm_response: str) -> Tuple[str, str, str, str, str | None, str | None]:
     """
     Extract and separate text from JSON in the LLM response.
-    Parses JSON to extract DashboardSummary, Recommendations, and CriticalityDetermination.
+    Parses JSON to extract DashboardSummary, Recommendations, CriticalityDetermination, and PrimaryFocus.
     
     Returns:
-        tuple: (text_part, dashboard_summary_json, recommendations_json, raw_json_string, criticality_determination) where:
+        tuple: (text_part, dashboard_summary_json, recommendations_json, raw_json_string, criticality_determination, primary_focus) where:
             text_part: Text content BEFORE JSON starts (for full_information)
             dashboard_summary_json: JSON array of DashboardSummary (for summary cards)
             recommendations_json: JSON array of Recommendations (for recommendations table)
             raw_json_string: Raw JSON string as extracted (for information_json storage)
             criticality_determination: CriticalityDetermination value or None
+            primary_focus: PrimaryFocus value or None (fallback to first 100 chars of first DashboardSummary item)
     """
     try:
         trimmed = llm_response.strip()
@@ -305,9 +351,9 @@ def extract_text_and_json(llm_response: str) -> Tuple[str, str, str, str, str | 
                 text_before = trimmed[:begin_pos].strip()
                 try:
                     parsed_json = json.loads(json_content)  # Validate JSON
-                    dashboard_summary, recommendations, criticality_determination = extract_json_sections(parsed_json)
+                    dashboard_summary, recommendations, criticality_determination, primary_focus = extract_json_sections(parsed_json)
                     print(f"✅ JSON found with BEGIN_JSON/END_JSON markers, split at {begin_pos}: text={len(text_before)} chars")
-                    return text_before, dashboard_summary, recommendations, json_content, criticality_determination
+                    return text_before, dashboard_summary, recommendations, json_content, criticality_determination, primary_focus
                 except Exception as e:
                     print(f"⚠️ Failed to parse JSON between BEGIN_JSON/END_JSON: {e}")
         
@@ -323,9 +369,9 @@ def extract_text_and_json(llm_response: str) -> Tuple[str, str, str, str, str | 
                     text_before = trimmed[:start_pos].strip()
                     try:
                         parsed_json = json.loads(json_content)  # Validate JSON
-                        dashboard_summary, recommendations, criticality_determination = extract_json_sections(parsed_json)
+                        dashboard_summary, recommendations, criticality_determination, primary_focus = extract_json_sections(parsed_json)
                         print(f"✅ JSON found in markdown, split at {start_pos}: text={len(text_before)} chars")
-                        return text_before, dashboard_summary, recommendations, json_content, criticality_determination
+                        return text_before, dashboard_summary, recommendations, json_content, criticality_determination, primary_focus
                     except:
                         pass
         
@@ -343,20 +389,20 @@ def extract_text_and_json(llm_response: str) -> Tuple[str, str, str, str, str | 
                             text_before = trimmed[:i].strip()  # TEXT STOPS HERE - before JSON starts
                             try:
                                 parsed_json = json.loads(json_content)  # Validate JSON
-                                dashboard_summary, recommendations, criticality_determination = extract_json_sections(parsed_json)
+                                dashboard_summary, recommendations, criticality_determination, primary_focus = extract_json_sections(parsed_json)
                                 print(f"✅ JSON found, split at {i}: text={len(text_before)} chars")
-                                return text_before, dashboard_summary, recommendations, json_content, criticality_determination
+                                return text_before, dashboard_summary, recommendations, json_content, criticality_determination, primary_focus
                             except:
                                 break
                 break
         
         # No JSON found
         print(f"ℹ️ No JSON found in LLM response")
-        return trimmed, "", "", "", None  # Return everything as text, no JSON
+        return trimmed, "", "", "", None, None  # Return everything as text, no JSON
         
     except Exception as e:
         print(f"❌ Error extracting text and JSON: {e}")
-        return llm_response, "", "", "", None
+        return llm_response, "", "", "", None, None
 
 
 def extract_review_section(llm_response: str) -> str | None:
@@ -715,7 +761,7 @@ def process_llm_response_and_save_ai_card(
     from datetime import datetime, timezone
     
     # Extract and separate text from JSON
-    full_information, dashboard_summary_json, recommendations_json, raw_json_string, criticality_determination = extract_text_and_json(llm_answer)
+    full_information, dashboard_summary_json, recommendations_json, raw_json_string, criticality_determination, primary_focus = extract_text_and_json(llm_answer)
     
     # Extract description using provided function
     extracted_content = extract_content_fn(llm_answer)
@@ -725,6 +771,9 @@ def process_llm_response_and_save_ai_card(
     
     # Truncate full_information if needed (for database storage)
     full_info_truncated = full_information[:2000] if len(full_information) > 2000 else full_information
+
+    # Truncate primary_focus if needed (max 2000 chars, similar to description)
+    short_summary = primary_focus[:2000] if primary_focus and len(primary_focus) > 2000 else primary_focus
 
     # Create card payload
     today = datetime.now(timezone.utc).date().isoformat()
@@ -752,6 +801,7 @@ def process_llm_response_and_save_ai_card(
         "source": card_config.get("source", "PI"),
         "source_job_id": job_id,
         "full_information": full_info_truncated,
+        "short_summary": short_summary,  # NEW FIELD (can be None if PrimaryFocus not found and no DashboardSummary)
     }
     
     # Add group_name if provided (for Group cards - backend accepts group_name in Team AI cards endpoint)
