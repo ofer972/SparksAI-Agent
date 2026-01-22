@@ -98,7 +98,8 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     )
     
     # Extract recommendations_json from LLM response for recommendations saving
-    _, _, recommendations_json, _, _ = extract_text_and_json(llm_answer)
+    extraction = extract_text_and_json(llm_answer)
+    recommendations_json = extraction.recommendations_json
 
     # Extract and create recommendations
     print("📋 EXTRACTING AND SAVING RECOMMENDATIONS")

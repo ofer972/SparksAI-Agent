@@ -2,12 +2,23 @@ import json
 import time
 from typing import Any, Callable, Dict, List, Tuple
 from datetime import datetime, timezone
+from pydantic import BaseModel
 
 from api_client import APIClient
 from llm_client import call_agent_llm_process
 from utils_audit import call_audit_service, extract_tokens_from_llm_response
 from utils_data_fetching import get_prompt_with_active_check, get_prompt_with_error_check
 from utils_logging import log
+
+
+class LLMResponseExtraction(BaseModel):
+    """Extracted components from LLM response."""
+    text_part: str
+    dashboard_summary_json: str
+    recommendations_json: str
+    raw_json_string: str
+    criticality_determination: str | None = None
+    primary_focus: str | None = None
 
 
 def clean_recommendation_text(text: str) -> str:
@@ -325,13 +336,13 @@ def extract_json_sections(parsed_json: Dict[str, Any] | List[Any]) -> Tuple[str,
         return "", "", None, None
 
 
-def extract_text_and_json(llm_response: str) -> Tuple[str, str, str, str, str | None, str | None]:
+def extract_text_and_json(llm_response: str) -> LLMResponseExtraction:
     """
     Extract and separate text from JSON in the LLM response.
     Parses JSON to extract DashboardSummary, Recommendations, CriticalityDetermination, and PrimaryFocus.
     
     Returns:
-        tuple: (text_part, dashboard_summary_json, recommendations_json, raw_json_string, criticality_determination, primary_focus) where:
+        LLMResponseExtraction: Model containing:
             text_part: Text content BEFORE JSON starts (for full_information)
             dashboard_summary_json: JSON array of DashboardSummary (for summary cards)
             recommendations_json: JSON array of Recommendations (for recommendations table)
@@ -353,7 +364,14 @@ def extract_text_and_json(llm_response: str) -> Tuple[str, str, str, str, str | 
                     parsed_json = json.loads(json_content)  # Validate JSON
                     dashboard_summary, recommendations, criticality_determination, primary_focus = extract_json_sections(parsed_json)
                     print(f"✅ JSON found with BEGIN_JSON/END_JSON markers, split at {begin_pos}: text={len(text_before)} chars")
-                    return text_before, dashboard_summary, recommendations, json_content, criticality_determination, primary_focus
+                    return LLMResponseExtraction(
+                        text_part=text_before,
+                        dashboard_summary_json=dashboard_summary,
+                        recommendations_json=recommendations,
+                        raw_json_string=json_content,
+                        criticality_determination=criticality_determination,
+                        primary_focus=primary_focus
+                    )
                 except Exception as e:
                     print(f"⚠️ Failed to parse JSON between BEGIN_JSON/END_JSON: {e}")
         
@@ -371,7 +389,14 @@ def extract_text_and_json(llm_response: str) -> Tuple[str, str, str, str, str | 
                         parsed_json = json.loads(json_content)  # Validate JSON
                         dashboard_summary, recommendations, criticality_determination, primary_focus = extract_json_sections(parsed_json)
                         print(f"✅ JSON found in markdown, split at {start_pos}: text={len(text_before)} chars")
-                        return text_before, dashboard_summary, recommendations, json_content, criticality_determination, primary_focus
+                        return LLMResponseExtraction(
+                            text_part=text_before,
+                            dashboard_summary_json=dashboard_summary,
+                            recommendations_json=recommendations,
+                            raw_json_string=json_content,
+                            criticality_determination=criticality_determination,
+                            primary_focus=primary_focus
+                        )
                     except:
                         pass
         
@@ -391,18 +416,39 @@ def extract_text_and_json(llm_response: str) -> Tuple[str, str, str, str, str | 
                                 parsed_json = json.loads(json_content)  # Validate JSON
                                 dashboard_summary, recommendations, criticality_determination, primary_focus = extract_json_sections(parsed_json)
                                 print(f"✅ JSON found, split at {i}: text={len(text_before)} chars")
-                                return text_before, dashboard_summary, recommendations, json_content, criticality_determination, primary_focus
+                                return LLMResponseExtraction(
+                                    text_part=text_before,
+                                    dashboard_summary_json=dashboard_summary,
+                                    recommendations_json=recommendations,
+                                    raw_json_string=json_content,
+                                    criticality_determination=criticality_determination,
+                                    primary_focus=primary_focus
+                                )
                             except:
                                 break
                 break
         
         # No JSON found
         print(f"ℹ️ No JSON found in LLM response")
-        return trimmed, "", "", "", None, None  # Return everything as text, no JSON
+        return LLMResponseExtraction(
+            text_part=trimmed,
+            dashboard_summary_json="",
+            recommendations_json="",
+            raw_json_string="",
+            criticality_determination=None,
+            primary_focus=None
+        )
         
     except Exception as e:
         print(f"❌ Error extracting text and JSON: {e}")
-        return llm_response, "", "", "", None, None
+        return LLMResponseExtraction(
+            text_part=llm_response,
+            dashboard_summary_json="",
+            recommendations_json="",
+            raw_json_string="",
+            criticality_determination=None,
+            primary_focus=None
+        )
 
 
 def extract_review_section(llm_response: str) -> str | None:
@@ -761,7 +807,13 @@ def process_llm_response_and_save_ai_card(
     from datetime import datetime, timezone
     
     # Extract and separate text from JSON
-    full_information, dashboard_summary_json, recommendations_json, raw_json_string, criticality_determination, primary_focus = extract_text_and_json(llm_answer)
+    extraction = extract_text_and_json(llm_answer)
+    full_information = extraction.text_part
+    dashboard_summary_json = extraction.dashboard_summary_json
+    recommendations_json = extraction.recommendations_json
+    raw_json_string = extraction.raw_json_string
+    criticality_determination = extraction.criticality_determination
+    primary_focus = extraction.primary_focus
     
     # Extract description using provided function
     extracted_content = extract_content_fn(llm_answer)
