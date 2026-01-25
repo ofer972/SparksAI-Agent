@@ -131,11 +131,18 @@ def run_agent() -> None:
 
             success, result_text = route_and_process(job)
 
-            final_body = {
-                "status": "completed" if success else "error",
-                "result": result_text if success else None,
-                "error": None if success else (result_text or "Unknown error"),
-            }
+            if success:
+                final_body = {
+                    "status": "completed",
+                    "result": result_text,
+                    "error": None,
+                }
+            else:
+                # Don't update "result" field - preserve existing LLM response saved during processing
+                final_body = {
+                    "status": "error",
+                    "error": result_text or "Unknown error",
+                }
             sc, resp = client.patch_agent_job(job_id, final_body)
             if sc == 200:
                 # Build concise summary with Team and Timestamp

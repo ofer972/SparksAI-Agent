@@ -11,6 +11,11 @@ from utils_data_fetching import get_prompt_with_active_check, get_prompt_with_er
 from utils_logging import log
 
 
+class JSONExtractionError(Exception):
+    """Exception raised when JSON extraction fails (BEGIN_JSON/END_JSON missing or invalid JSON)."""
+    pass
+
+
 class LLMResponseExtraction(BaseModel):
     """Extracted components from LLM response."""
     text_part: str
@@ -339,7 +344,7 @@ def extract_json_sections(parsed_json: Dict[str, Any] | List[Any]) -> Tuple[str,
 def extract_text_and_json(llm_response: str) -> LLMResponseExtraction:
     """
     Extract and separate text from JSON in the LLM response.
-    Parses JSON to extract DashboardSummary, Recommendations, CriticalityDetermination, and PrimaryFocus.
+    Requires BEGIN_JSON/END_JSON markers. Raises JSONExtractionError if markers missing or JSON invalid.
     
     Returns:
         LLMResponseExtraction: Model containing:
@@ -349,106 +354,80 @@ def extract_text_and_json(llm_response: str) -> LLMResponseExtraction:
             raw_json_string: Raw JSON string as extracted (for information_json storage)
             criticality_determination: CriticalityDetermination value or None
             primary_focus: PrimaryFocus value or None (fallback to first 100 chars of first DashboardSummary item)
+    
+    Raises:
+        JSONExtractionError: If BEGIN_JSON marker not found, END_JSON marker not found, or JSON is invalid
     """
+    trimmed = llm_response.strip()
+    
+    # Check for BEGIN_JSON marker
+    begin_pos = trimmed.find('BEGIN_JSON')
+    if begin_pos == -1:
+        raise JSONExtractionError("BEGIN_JSON marker not found in LLM response")
+    
+    # Check for END_JSON marker
+    end_pos = trimmed.find('END_JSON')
+    if end_pos == -1:
+        raise JSONExtractionError("END_JSON marker not found in LLM response")
+    
+    # Extract content between markers
+    json_content = trimmed[begin_pos + len('BEGIN_JSON'):end_pos].strip()
+    text_before = trimmed[:begin_pos].strip()
+    
+    # Validate JSON
     try:
-        trimmed = llm_response.strip()
-        
-        # First try to find BEGIN_JSON/END_JSON markers
-        begin_pos = trimmed.find('BEGIN_JSON')
-        if begin_pos != -1:
-            end_pos = trimmed.find('END_JSON')
-            if end_pos != -1:
-                json_content = trimmed[begin_pos + len('BEGIN_JSON'):end_pos].strip()
-                text_before = trimmed[:begin_pos].strip()
-                try:
-                    parsed_json = json.loads(json_content)  # Validate JSON
-                    dashboard_summary, recommendations, criticality_determination, primary_focus = extract_json_sections(parsed_json)
-                    print(f"✅ JSON found with BEGIN_JSON/END_JSON markers, split at {begin_pos}: text={len(text_before)} chars")
-                    return LLMResponseExtraction(
-                        text_part=text_before,
-                        dashboard_summary_json=dashboard_summary,
-                        recommendations_json=recommendations,
-                        raw_json_string=json_content,
-                        criticality_determination=criticality_determination,
-                        primary_focus=primary_focus
-                    )
-                except Exception as e:
-                    print(f"⚠️ Failed to parse JSON between BEGIN_JSON/END_JSON: {e}")
-        
-        # Look for JSON markers: ```json or ``` or just start of JSON { or [
-        # First try to find markdown code fences
-        for marker in ['```json', '```']:
-            start_pos = trimmed.find(marker)
-            if start_pos != -1:
-                # Find closing ```
-                end_pos = trimmed.find('```', start_pos + len(marker))
-                if end_pos != -1:
-                    json_content = trimmed[start_pos + len(marker):end_pos].strip()
-                    text_before = trimmed[:start_pos].strip()
-                    try:
-                        parsed_json = json.loads(json_content)  # Validate JSON
-                        dashboard_summary, recommendations, criticality_determination, primary_focus = extract_json_sections(parsed_json)
-                        print(f"✅ JSON found in markdown, split at {start_pos}: text={len(text_before)} chars")
-                        return LLMResponseExtraction(
-                            text_part=text_before,
-                            dashboard_summary_json=dashboard_summary,
-                            recommendations_json=recommendations,
-                            raw_json_string=json_content,
-                            criticality_determination=criticality_determination,
-                            primary_focus=primary_focus
-                        )
-                    except:
-                        pass
-        
-        # If no markdown, find JSON starting with { or [
-        for i, char in enumerate(trimmed):
-            if char in '{[':  # JSON starts here
-                depth = 1
-                for j in range(i + 1, len(trimmed)):
-                    if trimmed[j] in '{[':
-                        depth += 1
-                    elif trimmed[j] in '}]':
-                        depth -= 1
-                        if depth == 0:  # Found complete JSON
-                            json_content = trimmed[i:j+1]
-                            text_before = trimmed[:i].strip()  # TEXT STOPS HERE - before JSON starts
-                            try:
-                                parsed_json = json.loads(json_content)  # Validate JSON
-                                dashboard_summary, recommendations, criticality_determination, primary_focus = extract_json_sections(parsed_json)
-                                print(f"✅ JSON found, split at {i}: text={len(text_before)} chars")
-                                return LLMResponseExtraction(
-                                    text_part=text_before,
-                                    dashboard_summary_json=dashboard_summary,
-                                    recommendations_json=recommendations,
-                                    raw_json_string=json_content,
-                                    criticality_determination=criticality_determination,
-                                    primary_focus=primary_focus
-                                )
-                            except:
-                                break
-                break
-        
-        # No JSON found
-        print(f"ℹ️ No JSON found in LLM response")
-        return LLMResponseExtraction(
-            text_part=trimmed,
-            dashboard_summary_json="",
-            recommendations_json="",
-            raw_json_string="",
-            criticality_determination=None,
-            primary_focus=None
-        )
-        
-    except Exception as e:
-        print(f"❌ Error extracting text and JSON: {e}")
-        return LLMResponseExtraction(
-            text_part=llm_response,
-            dashboard_summary_json="",
-            recommendations_json="",
-            raw_json_string="",
-            criticality_determination=None,
-            primary_focus=None
-        )
+        parsed_json = json.loads(json_content)
+    except json.JSONDecodeError as e:
+        raise JSONExtractionError(f"Invalid JSON format between BEGIN_JSON/END_JSON: {str(e)}")
+    
+    # Extract sections from parsed JSON
+    dashboard_summary, recommendations, criticality_determination, primary_focus = extract_json_sections(parsed_json)
+    
+    print(f"✅ JSON found with BEGIN_JSON/END_JSON markers, split at {begin_pos}: text={len(text_before)} chars")
+    return LLMResponseExtraction(
+        text_part=text_before,
+        dashboard_summary_json=dashboard_summary,
+        recommendations_json=recommendations,
+        raw_json_string=json_content,
+        criticality_determination=criticality_determination,
+        primary_focus=primary_focus
+    )
+    
+    # DISABLED: Method 2 (Markdown code fences) - not used to prevent wrong information in AI cards
+    # for marker in ['```json', '```']:
+    #     start_pos = trimmed.find(marker)
+    #     if start_pos != -1:
+    #         end_pos = trimmed.find('```', start_pos + len(marker))
+    #         if end_pos != -1:
+    #             json_content = trimmed[start_pos + len(marker):end_pos].strip()
+    #             text_before = trimmed[:start_pos].strip()
+    #             try:
+    #                 parsed_json = json.loads(json_content)
+    #                 dashboard_summary, recommendations, criticality_determination, primary_focus = extract_json_sections(parsed_json)
+    #                 print(f"✅ JSON found in markdown, split at {start_pos}: text={len(text_before)} chars")
+    #                 return LLMResponseExtraction(...)
+    #             except:
+    #                 pass
+    
+    # DISABLED: Method 3 (Raw JSON detection) - not used to prevent wrong information in AI cards
+    # for i, char in enumerate(trimmed):
+    #     if char in '{[':
+    #         depth = 1
+    #         for j in range(i + 1, len(trimmed)):
+    #             if trimmed[j] in '{[':
+    #                 depth += 1
+    #             elif trimmed[j] in '}]':
+    #                 depth -= 1
+    #                 if depth == 0:
+    #                     json_content = trimmed[i:j+1]
+    #                     text_before = trimmed[:i].strip()
+    #                     try:
+    #                         parsed_json = json.loads(json_content)
+    #                         dashboard_summary, recommendations, criticality_determination, primary_focus = extract_json_sections(parsed_json)
+    #                         return LLMResponseExtraction(...)
+    #                     except:
+    #                         break
+    #         break
 
 
 def extract_review_section(llm_response: str) -> str | None:

@@ -11,33 +11,37 @@ import job_pi_planning_gaps
 import job_group_sprint_flow
 import job_group_sprint_predictability
 import job_group_sprint_dependency
+from utils_llm_processing_and_extraction import JSONExtractionError
 
 
 def route_and_process(job: Dict[str, Any]) -> Tuple[bool, str]:
-    job_type = str(job.get("job_type", ""))
-    if job_type == "Daily Progress":
-        return job_daily_progress.process(job)
-    if job_type == "Sprint Goal":
-        return job_sprint_goal.process(job)
-    if job_type == "PI Sync":
-        return job_pi_sync.process(job)
-    if job_type == "Team PI Insight":
-        return job_team_pi_insight.process(job)
-    # Backward compatibility: support old job type name "Team Retrospective Preparation"
-    if job_type == "Team Retrospective Preparation":
-        return job_team_retro_topics.process(job)
-    if job_type == "Team Retro Topics":
-        return job_team_retro_topics.process(job)
-    if job_type == "PI Dependencies":
-        return job_pi_dependencies.process(job)
-    if job_type == "PI Planning Gaps":
-        return job_pi_planning_gaps.process(job)
-    if job_type == "Group Sprint Flow":
-        return job_group_sprint_flow.process(job)
-    if job_type == "Group Sprint Predictability":
-        return job_group_sprint_predictability.process(job)
-    if job_type == "Group Sprint Dependency":
-        return job_group_sprint_dependency.process(job)
-    return False, f"Unknown job type: {job_type}"
+    try:
+        job_type = str(job.get("job_type", ""))
+        if job_type == "Daily Progress":
+            return job_daily_progress.process(job)
+        if job_type == "Sprint Goal":
+            return job_sprint_goal.process(job)
+        if job_type == "PI Sync":
+            return job_pi_sync.process(job)
+        if job_type == "Team PI Insight":
+            return job_team_pi_insight.process(job)
+        # Backward compatibility: support old job type name "Team Retrospective Preparation"
+        if job_type == "Team Retrospective Preparation":
+            return job_team_retro_topics.process(job)
+        if job_type == "Team Retro Topics":
+            return job_team_retro_topics.process(job)
+        if job_type == "PI Dependencies":
+            return job_pi_dependencies.process(job)
+        if job_type == "PI Planning Gaps":
+            return job_pi_planning_gaps.process(job)
+        if job_type == "Group Sprint Flow":
+            return job_group_sprint_flow.process(job)
+        if job_type == "Group Sprint Predictability":
+            return job_group_sprint_predictability.process(job)
+        if job_type == "Group Sprint Dependency":
+            return job_group_sprint_dependency.process(job)
+        return False, f"Unknown job type: {job_type}"
+    except JSONExtractionError as e:
+        return False, str(e)
 
 
