@@ -209,8 +209,7 @@ def extract_content_between_markers(
         if not content_text:
             print(f"⚠️ No content found between '{start_marker}' and '{end_marker}'")
             return ""
-        
-        print(f"✅ Extracted content between '{start_marker}' and '{end_marker}' ({len(content_text)} characters)")
+
         return content_text
         
     except Exception as e:
@@ -265,8 +264,6 @@ def extract_json_sections(parsed_json: Dict[str, Any] | List[Any]) -> Tuple[str,
                 else:
                     fallback_text = str(first_item)
                 primary_focus = fallback_text[:100] if fallback_text else None
-                if primary_focus:
-                    print(f"ℹ️ Using first 100 chars of DashboardSummary as fallback for PrimaryFocus")
             
             return dashboard_summary_json, recommendations_json, criticality_determination, primary_focus
         
@@ -274,24 +271,18 @@ def extract_json_sections(parsed_json: Dict[str, Any] | List[Any]) -> Tuple[str,
         if not isinstance(parsed_json, dict):
             print(f"⚠️ Unexpected JSON type: {type(parsed_json)}")
             return "", "", None, None
-        
-        # Debug: Print all available keys
-        available_keys = list(parsed_json.keys())
-        print(f"🔍 DEBUG: Available JSON keys: {available_keys}")
-        
+
         # Extract DashboardSummary (try multiple variations in order of likelihood)
         dashboard_summary = []
-        
+        available_keys = list(parsed_json.keys())
+
         # Try Dashboard_Summary first (most common in your output)
         if 'Dashboard_Summary' in parsed_json:
             dashboard_summary = parsed_json['Dashboard_Summary']
-            print(f"✅ Found Dashboard_Summary with {len(dashboard_summary) if isinstance(dashboard_summary, list) else 'unknown'} items")
         elif 'Dashboard Summary' in parsed_json:
             dashboard_summary = parsed_json['Dashboard Summary']
-            print(f"✅ Found 'Dashboard Summary' with {len(dashboard_summary) if isinstance(dashboard_summary, list) else 'unknown'} items")
         elif 'DashboardSummary' in parsed_json:
             dashboard_summary = parsed_json['DashboardSummary']
-            print(f"✅ Found DashboardSummary with {len(dashboard_summary) if isinstance(dashboard_summary, list) else 'unknown'} items")
         else:
             print(f"⚠️ No Dashboard Summary key found. Available keys: {available_keys}")
         
@@ -303,23 +294,16 @@ def extract_json_sections(parsed_json: Dict[str, Any] | List[Any]) -> Tuple[str,
         
         # Extract CriticalityDetermination
         criticality_determination = parsed_json.get('CriticalityDetermination')
-        if criticality_determination:
-            print(f"✅ Found CriticalityDetermination: {criticality_determination}")
-        else:
-            print(f"ℹ️ No CriticalityDetermination found in JSON")
-        
+
         # Extract PrimaryFocus (case-insensitive search only - no permutations)
         primary_focus = None
         for key in parsed_json.keys():
             if key.lower() == 'primaryfocus':
                 primary_focus = parsed_json[key]
                 break
-        
-        if primary_focus:
-            print(f"✅ Found PrimaryFocus: {primary_focus[:100]}...")
-        else:
-            print(f"Primary focus not found")
-            # Fallback: Use first 100 chars of first DashboardSummary item
+
+        # Fallback: Use first 100 chars of first DashboardSummary item if PrimaryFocus not found
+        if primary_focus is None:
             if dashboard_summary and isinstance(dashboard_summary, list) and len(dashboard_summary) > 0:
                 first_item = dashboard_summary[0]
                 if isinstance(first_item, dict):
@@ -328,12 +312,7 @@ def extract_json_sections(parsed_json: Dict[str, Any] | List[Any]) -> Tuple[str,
                 else:
                     fallback_text = str(first_item)
                 primary_focus = fallback_text[:100] if fallback_text else None
-                if primary_focus:
-                    print(f"ℹ️ Using first 100 chars of DashboardSummary as fallback")
-            else:
-                print(f"ℹ️ No PrimaryFocus found and no DashboardSummary available")
-        
-        print(f"✅ Extracted sections: DashboardSummary={len(dashboard_summary) if isinstance(dashboard_summary, list) else 0} items, Recommendations={len(recommendations) if isinstance(recommendations, list) else 0} items")
+
         return dashboard_summary_json, recommendations_json, criticality_determination, primary_focus
         
     except Exception as e:
@@ -383,7 +362,6 @@ def extract_text_and_json(llm_response: str) -> LLMResponseExtraction:
     # Extract sections from parsed JSON
     dashboard_summary, recommendations, criticality_determination, primary_focus = extract_json_sections(parsed_json)
     
-    print(f"✅ JSON found with BEGIN_JSON/END_JSON markers, split at {begin_pos}: text={len(text_before)} chars")
     return LLMResponseExtraction(
         text_part=text_before,
         dashboard_summary_json=dashboard_summary,
