@@ -1288,6 +1288,176 @@ def get_group_active_sprint_stories_by_epic_for_analysis(
     return "\n".join(parts)
 
 
+def get_current_sprint_progress_for_analysis(
+    client: APIClient,
+    team_name: str,
+) -> str:
+    """
+    Fetch current sprint progress data and format it for LLM analysis.
+    
+    Args:
+        client: APIClient instance
+        team_name: Team name to get current sprint progress for
+        
+    Returns:
+        Formatted string with current sprint progress data, including header.
+        Returns "No sprint progress data available" if fetch fails or data is empty.
+    """
+    try:
+        sc, response = client.get_current_sprint_progress(team_name=team_name, is_group=False)
+        
+        if sc != 200 or not isinstance(response, dict):
+            return "=== CURRENT SPRINT PROGRESS ===\nNo sprint progress data available (HTTP error)\n"
+        
+        # Extract data from response structure
+        data = response.get("data", {})
+        if not isinstance(data, dict):
+            return "=== CURRENT SPRINT PROGRESS ===\nNo sprint progress data available\n"
+        
+        # Extract fields from response
+        total_issues = data.get("total_issues", 0)
+        completed_issues = data.get("completed_issues", 0)
+        in_progress_issues = data.get("in_progress_issues", 0)
+        todo_issues = data.get("todo_issues", 0)
+        percent_completed = data.get("percent_completed", 0.0)
+        percent_completed_status = data.get("percent_completed_status", "")
+        in_progress_issues_status = data.get("in_progress_issues_status", "")
+        sprint_id = data.get("sprint_id")
+        sprint_name = data.get("sprint_name", "")
+        days_left = data.get("days_left", "")
+        days_in_sprint = data.get("days_in_sprint")
+        
+        # Format the data
+        parts = ["=== CURRENT SPRINT PROGRESS ==="]
+        parts.append("")
+        
+        # Sprint information
+        if sprint_name:
+            parts.append(f"Sprint: {sprint_name}")
+        if sprint_id:
+            parts.append(f"Sprint ID: {sprint_id}")
+        if days_left:
+            parts.append(f"Days Left: {days_left}")
+        if days_in_sprint is not None:
+            parts.append(f"Days in Sprint: {days_in_sprint}")
+        parts.append("")
+        
+        # Issue counts
+        parts.append(f"Total Issues: {total_issues}")
+        parts.append(f"Completed Issues: {completed_issues} ({percent_completed:.1f}%)")
+        parts.append(f"In Progress Issues: {in_progress_issues}")
+        parts.append(f"To Do Issues: {todo_issues}")
+        parts.append("")
+        
+        # Status indicators
+        if percent_completed_status or in_progress_issues_status:
+            parts.append("Status Indicators:")
+            if percent_completed_status:
+                parts.append(f"  Completion Status: {percent_completed_status}")
+            if in_progress_issues_status:
+                parts.append(f"  In Progress Status: {in_progress_issues_status}")
+        
+        parts.append("")
+        
+        return "\n".join(parts)
+        
+    except Exception as e:
+        return f"=== CURRENT SPRINT PROGRESS ===\n⚠️ Error fetching sprint progress: {str(e)}\n"
+
+
+def get_goal_progress_for_analysis(
+    client: APIClient,
+    sprint_id: int,
+    team_name: str,
+) -> str:
+    """
+    Fetch goal progress data for a sprint and format it for LLM analysis.
+    
+    Args:
+        client: APIClient instance
+        sprint_id: Sprint ID to get goals for
+        team_name: Team name to filter goals
+        
+    Returns:
+        Formatted string with goal progress data, including header.
+        Returns "No goals found" if fetch fails or data is empty.
+    """
+    try:
+        sc, response = client.get_goals(
+            scope_type="sprint",
+            sprint_id=sprint_id,
+            team_name=team_name,
+        )
+        
+        if sc != 200 or not isinstance(response, dict):
+            return "=== GOAL PROGRESS ===\nNo goals found (HTTP error)\n"
+        
+        # Extract data from response structure
+        data = response.get("data", {})
+        if not isinstance(data, dict):
+            return "=== GOAL PROGRESS ===\nNo goals found\n"
+        
+        # Extract team_goals array
+        team_goals_list = data.get("team_goals", [])
+        if not team_goals_list or not isinstance(team_goals_list, list):
+            return "=== GOAL PROGRESS ===\nNo goals found for this sprint\n"
+        
+        # Get goals from first team (should only be one team when filtered by team_name)
+        goals = []
+        if len(team_goals_list) > 0 and isinstance(team_goals_list[0], dict):
+            goals = team_goals_list[0].get("goals", [])
+        
+        if not goals or not isinstance(goals, list):
+            return "=== GOAL PROGRESS ===\nNo goals found for this sprint\n"
+        
+        # Format goals with connected issues
+        parts = ["=== GOAL PROGRESS ==="]
+        parts.append("")
+        
+        # Sort goals by goal_number if available, otherwise by id
+        sorted_goals = sorted(
+            goals,
+            key=lambda g: g.get("goal_number", g.get("id", 0))
+        )
+        
+        for goal_idx, goal in enumerate(sorted_goals, start=1):
+            goal_text = goal.get("goal_text", "")
+            status = goal.get("status", "")
+            progress = goal.get("goal_progress_by_children", 0)
+            issue_keys = goal.get("issue_keys", [])
+            
+            # Format goal header
+            parts.append(f"Goal {goal_idx}: {goal_text}")
+            parts.append(f"  Status: {status}")
+            parts.append(f"  Progress: {progress}%")
+            
+            # Format connected issues
+            if issue_keys and isinstance(issue_keys, list) and len(issue_keys) > 0:
+                parts.append("  Connected Issues:")
+                for issue in issue_keys:
+                    if isinstance(issue, dict):
+                        issue_key = issue.get("issue_key", "")
+                        summary = issue.get("summary", "")
+                        issue_status = issue.get("status", "")
+                        status_category = issue.get("status_category", "")
+                        
+                        issue_line = f"    - {issue_key}: {summary}"
+                        if issue_status:
+                            issue_line += f" - {issue_status}"
+                        if status_category:
+                            issue_line += f" ({status_category})"
+                        parts.append(issue_line)
+            else:
+                parts.append("  Connected Issues: None")
+            
+            parts.append("")  # Empty line between goals
+        
+        return "\n".join(parts)
+        
+    except Exception as e:
+        return f"=== GOAL PROGRESS ===\n⚠️ Error fetching goal progress: {str(e)}\n"
+
+
 def get_pi_planning_gaps_for_analysis(
     client: APIClient,
     pi: str,

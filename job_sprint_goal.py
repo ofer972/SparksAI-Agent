@@ -12,7 +12,9 @@ from utils_processing import (
     extract_review_section,
     save_recommendations_from_json,
     get_active_sprint_summary_by_team_for_analysis,
-    get_sprint_issues_with_epic_for_analysis,
+    get_team_sprint_burndown_for_analysis,
+    get_goal_progress_for_analysis,
+    get_current_sprint_progress_for_analysis,
     process_llm_response_and_save_ai_card,
     process_llm_with_two_step_fallback,
 )
@@ -27,35 +29,35 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     if not team_name:
         return False, "Missing team_name in job payload"
 
-    # Step 1: Get active sprint summaries for team (formatted) with sprint_id and sprint_goal
-    sprint_summary_formatted, sprint_id, sprint_goal = get_active_sprint_summary_by_team_for_analysis(client, team_name)
+    # Step 1: Get active sprint ID (we only need sprint_id, not the formatted summary)
+    _, sprint_id, _ = get_active_sprint_summary_by_team_for_analysis(client, team_name)
     
     # Check if we got a valid sprint
     if not sprint_id:
-        # The function already returned an error message in sprint_summary_formatted
-        # Check if it's an HTTP error or just no data
-        if "HTTP error" in sprint_summary_formatted:
-            return False, "Failed to get active sprint summaries"
-        return True, "No active sprint summaries found for team"
+        return False, "Failed to get active sprint ID"
     
-    # Validate sprint_goal
-    if not sprint_goal or len(str(sprint_goal).strip()) < 10:
-        log(int(job_id) if job_id is not None else None, "❌ Sprint goal not found")
-        return True, "No sprint Goal found"
+    log(int(job_id) if job_id is not None else None, f"✅ Sprint ID found: {sprint_id}")
     
-    log(int(job_id) if job_id is not None else None, f"✅ Sprint goal found")
+    # Step 2: Get goal progress data (formatted)
+    goal_progress_formatted = get_goal_progress_for_analysis(client, sprint_id, team_name)
     
-    # Step 2: Get JIRA issues for the sprint with epic data (formatted)
-    jira_issues_formatted = get_sprint_issues_with_epic_for_analysis(client, sprint_id, team_name)
+    # Step 3: Get current sprint progress data (formatted)
+    current_sprint_progress_formatted = get_current_sprint_progress_for_analysis(client, team_name)
+    
+    # Step 4: Get burndown chart data (formatted)
+    burndown_formatted = get_team_sprint_burndown_for_analysis(client, team_name)
     
     # Build data string (without prompt)
     parts = ["SPRINT GOAL ANALYSIS DATA", "=" * 50, ""]
     
-    # Add formatted sprint summary (includes sprint goal and all sprint data)
-    parts.append(sprint_summary_formatted)
+    # Add goal progress first
+    parts.append(goal_progress_formatted)
     
-    # Add formatted JIRA issues
-    parts.append(jira_issues_formatted)
+    # Add current sprint progress second
+    parts.append(current_sprint_progress_formatted)
+    
+    # Add burndown data third
+    parts.append(burndown_formatted)
     
     data_string = "\n".join(parts)
     

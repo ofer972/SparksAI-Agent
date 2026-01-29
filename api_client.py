@@ -271,6 +271,44 @@ class APIClient:
         )
         return resp.status_code, self._safe_json(resp)
 
+    def get_current_sprint_progress(self, team_name: str, is_group: bool = False) -> Tuple[int, Any]:
+        """Get current sprint progress for a team or group.
+        
+        Args:
+            team_name: Team name or group name (if is_group=true)
+            is_group: If true, team_name is treated as a group name
+            
+        Returns:
+            Tuple of (status_code, response_data)
+            Response structure: {
+                "success": true,
+                "data": {
+                    "total_issues": int,
+                    "completed_issues": int,
+                    "in_progress_issues": int,
+                    "todo_issues": int,
+                    "percent_completed": float,
+                    "percent_completed_status": "green" | "yellow" | "red",
+                    "in_progress_issues_status": "green" | "yellow" | "red",
+                    "sprint_id": int,
+                    "sprint_name": str,
+                    "days_left": str,
+                    "days_in_sprint": int,
+                    "team_name": str
+                }
+            }
+        """
+        params: Dict[str, Any] = {"team_name": team_name}
+        if is_group:
+            params["isGroup"] = "true"
+        resp = requests.get(
+            self._url("/api/v1/team-metrics/current-sprint-progress"),
+            params=params,
+            headers=self._headers(),
+            timeout=self.timeout_seconds,
+        )
+        return resp.status_code, self._safe_json(resp)
+
     def get_sprints(self, team_name: str, sprint_status: str | None = None) -> Tuple[int, Any]:
         params: Dict[str, Any] = {"team_name": team_name}
         if sprint_status:
@@ -821,6 +859,43 @@ class APIClient:
         """
         resp = requests.get(
             self._url(f"/api/v1/groups/by-name/{group_name}/teams"),
+            headers=self._headers(),
+            timeout=self.timeout_seconds,
+        )
+        return resp.status_code, self._safe_json(resp)
+
+    def get_goals(
+        self,
+        scope_type: str,
+        sprint_id: int | None = None,
+        team_name: str | None = None,
+    ) -> Tuple[int, Any]:
+        """Get goals for a scope (PI, Sprint, or Release).
+        
+        Args:
+            scope_type: 'pi', 'sprint', or 'release'
+            sprint_id: Sprint ID (required if scope_type='sprint')
+            team_name: Optional team name to filter by
+            
+        Returns:
+            Tuple of (status_code, response_data)
+            Response structure: {
+                "success": true,
+                "data": {
+                    "scope_type": "sprint",
+                    "team_goals": [...]
+                }
+            }
+        """
+        params: Dict[str, Any] = {"scope_type": scope_type}
+        if sprint_id:
+            params["sprint_id"] = sprint_id
+        if team_name:
+            params["team_name"] = team_name
+        
+        resp = requests.get(
+            self._url("/api/v1/goals"),
+            params=params,
             headers=self._headers(),
             timeout=self.timeout_seconds,
         )

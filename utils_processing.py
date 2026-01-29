@@ -43,6 +43,8 @@ from utils_data_fetching import (
     get_group_sprint_dependencies_for_analysis,
     get_group_active_sprint_stories_by_epic_for_analysis,
     get_pi_planning_gaps_for_analysis,
+    get_goal_progress_for_analysis,
+    get_current_sprint_progress_for_analysis,
 )
 
 from utils_llm_processing_and_extraction import (
@@ -91,6 +93,8 @@ __all__ = [
     "get_group_sprint_dependencies_for_analysis",
     "get_group_active_sprint_stories_by_epic_for_analysis",
     "get_pi_planning_gaps_for_analysis",
+    "get_goal_progress_for_analysis",
+    "get_current_sprint_progress_for_analysis",
     # LLM processing and extraction
     "clean_recommendation_text",
     "extract_recommendations",

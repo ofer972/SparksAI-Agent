@@ -10,6 +10,7 @@ from utils_processing import (
     extract_text_and_json,
     extract_review_section,
     get_team_sprint_burndown_for_analysis,
+    get_current_sprint_progress_for_analysis,
     get_transcripts_for_analysis,
     get_closed_sprints_for_analysis,
     process_llm_response_and_save_ai_card,
@@ -36,6 +37,9 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
         limit=5,
     )
     
+    # Get current sprint progress
+    current_sprint_progress_formatted = get_current_sprint_progress_for_analysis(client, team_name)
+    
     # Get sprint burndown
     burndown_formatted = get_team_sprint_burndown_for_analysis(client, team_name)
     
@@ -54,6 +58,9 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     # Add formatted transcripts (includes "Begin transcript(s)" / "End transcript(s)" markers)
     parts.append(transcripts_formatted)
     parts.append("")
+    
+    # Add current sprint progress (before burndown)
+    parts.append(current_sprint_progress_formatted)
     
     # Add formatted burndown (includes "=== BURN DOWN DATA FOR THE ACTIVE SPRINT ===" header)
     parts.append(burndown_formatted)
