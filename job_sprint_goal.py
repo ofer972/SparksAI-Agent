@@ -41,6 +41,11 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     # Step 2: Get goal progress data (formatted)
     goal_progress_formatted = get_goal_progress_for_analysis(client, sprint_id, team_name)
     
+    # Check if no goals found - if so, end job without creating AI insights
+    if "No goals found" in goal_progress_formatted:
+        log(int(job_id) if job_id is not None else None, "❌ No sprint goals found in database")
+        return False, "No sprint goal found in the database"
+    
     # Step 3: Get current sprint progress data (formatted)
     current_sprint_progress_formatted = get_current_sprint_progress_for_analysis(client, team_name)
     
