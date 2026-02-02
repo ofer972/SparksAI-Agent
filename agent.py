@@ -8,6 +8,7 @@ import requests
 import config
 from api_client import APIClient, wait_for_backend
 from job_router import route_and_process
+from utils_audit import call_audit_service
 
 
 def _now_iso() -> str:
@@ -129,6 +130,9 @@ def run_agent() -> None:
             if sc != 200:
                 print(f"⚠️ Failed updating input_sent for {job_id}")
 
+            # Track processing start time for audit logging
+            processing_start_time = time.time()
+            
             success, result_text = route_and_process(job)
 
             if success:
@@ -153,6 +157,28 @@ def run_agent() -> None:
                 if len(summary) > 200:
                     summary = summary[:197] + "..."
                 print(f"✅ Job {job_id} {'completed' if success else 'failed'}: {summary}")
+                
+                # Audit failures AFTER job is updated with error message
+                if not success:
+                    duration_seconds = time.time() - processing_start_time
+                    job_type = job.get("job_type", "Unknown")
+                    job_params = {
+                        "team_name": job.get("team_name"),
+                        "group_name": job.get("group_name"),
+                        "pi": job.get("pi"),
+                        "job_id": job_id,
+                        "job_type": job_type,
+                    }
+                    call_audit_service(
+                        action=job_type,
+                        duration_seconds=duration_seconds,
+                        status_code=500,
+                        action_date=datetime.now(timezone.utc),
+                        tokens_used=0,  # No tokens used for failures
+                        query_params=job_params,
+                        body=job_params,
+                        job_id=job_id,
+                    )
             else:
                 print(f"⚠️ Final update failed for job {job_id}: {sc} {resp}")
 
