@@ -323,7 +323,8 @@ def extract_json_sections(parsed_json: Dict[str, Any] | List[Any]) -> Tuple[str,
 def extract_text_and_json(llm_response: str) -> LLMResponseExtraction:
     """
     Extract and separate text from JSON in the LLM response.
-    Requires BEGIN_JSON/END_JSON markers. Raises JSONExtractionError if markers missing or JSON invalid.
+    Requires BEGIN_JSON/END_JSON markers. Uses relaxed extraction that finds actual JSON boundaries,
+    allowing spaces/newlines around markers. Raises JSONExtractionError if markers missing or JSON invalid.
     
     Returns:
         LLMResponseExtraction: Model containing:
@@ -339,25 +340,68 @@ def extract_text_and_json(llm_response: str) -> LLMResponseExtraction:
     """
     trimmed = llm_response.strip()
     
-    # Check for BEGIN_JSON marker
-    begin_pos = trimmed.find('BEGIN_JSON')
-    if begin_pos == -1:
+    # Find BEGIN_JSON marker (allows text before it)
+    begin_marker_pos = trimmed.find('BEGIN_JSON')
+    if begin_marker_pos == -1:
         raise JSONExtractionError("BEGIN_JSON marker not found in LLM response")
     
-    # Check for END_JSON marker
-    end_pos = trimmed.find('END_JSON')
-    if end_pos == -1:
+    # Find END_JSON marker
+    end_marker_pos = trimmed.find('END_JSON')
+    if end_marker_pos == -1:
         raise JSONExtractionError("END_JSON marker not found in LLM response")
     
-    # Extract content between markers
-    json_content = trimmed[begin_pos + len('BEGIN_JSON'):end_pos].strip()
-    text_before = trimmed[:begin_pos].strip()
+    # Validate marker order
+    if end_marker_pos <= begin_marker_pos:
+        raise JSONExtractionError("END_JSON must appear after BEGIN_JSON")
+    
+    # Extract text before BEGIN_JSON (allows spaces/newlines)
+    text_before = trimmed[:begin_marker_pos].strip()
+    
+    # Find the actual start of JSON (first { or [ after BEGIN_JSON)
+    # Search in the section between BEGIN_JSON and END_JSON
+    search_start = begin_marker_pos + len('BEGIN_JSON')
+    search_end = end_marker_pos
+    
+    # Find first JSON character ({ or [)
+    json_start_pos = -1
+    for i in range(search_start, search_end):
+        char = trimmed[i]
+        if char == '{' or char == '[':
+            json_start_pos = i
+            break
+    
+    if json_start_pos == -1:
+        raise JSONExtractionError("No JSON object or array found after BEGIN_JSON marker")
+    
+    # Find the actual end of JSON (matching } or ] before END_JSON)
+    # Need to find matching closing brace/bracket by counting depth
+    start_char = trimmed[json_start_pos]
+    end_char = '}' if start_char == '{' else ']'
+    
+    # Count braces/brackets to find the matching closing one
+    depth = 0
+    json_end_pos = -1
+    for i in range(json_start_pos, search_end):
+        char = trimmed[i]
+        if char == start_char:
+            depth += 1
+        elif char == end_char:
+            depth -= 1
+            if depth == 0:
+                json_end_pos = i
+                break
+    
+    if json_end_pos == -1:
+        raise JSONExtractionError("JSON structure is incomplete or malformed (unmatched braces/brackets)")
+    
+    # Extract only the actual JSON content (ignoring whitespace around markers)
+    json_content = trimmed[json_start_pos:json_end_pos + 1]
     
     # Validate JSON
     try:
         parsed_json = json.loads(json_content)
     except json.JSONDecodeError as e:
-        raise JSONExtractionError(f"Invalid JSON format between BEGIN_JSON/END_JSON: {str(e)}")
+        raise JSONExtractionError(f"Invalid JSON format: {str(e)}")
     
     # Extract sections from parsed JSON
     dashboard_summary, recommendations, criticality_determination, primary_focus = extract_json_sections(parsed_json)
