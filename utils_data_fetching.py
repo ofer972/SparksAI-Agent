@@ -1,3 +1,4 @@
+import json
 from typing import Any, Dict, Tuple
 
 from api_client import APIClient
@@ -609,46 +610,60 @@ def get_active_sprint_summary_by_team_for_analysis(
         Tuple of (formatted_string, sprint_id, sprint_goal):
         - formatted_string: Formatted string with active sprint status, including header.
                            Returns error message if fetch fails or data is empty.
-        - sprint_id: The sprint_id from the selected sprint (highest issues_at_start),
+        - sprint_id: The sprint_id from the selected sprint (highest total issues: to_do + in_progress + done),
                     or None if error/no sprint found.
         - sprint_goal: The sprint_goal from the selected sprint, or None if error/no sprint found.
     """
     sc, summaries_response = client.get_active_sprint_summary_by_team(team_name)
     
     if sc != 200:
-        error_msg = "=== ACTIVE SPRINT STATUS ===\nNo active sprint summaries found (HTTP error)\n"
+        print(f"❌ HTTP Error {sc} - Backend response: {json.dumps(summaries_response, indent=2, default=str)}")
+        error_msg = f"=== ACTIVE SPRINT STATUS ===\nNo active sprint summaries found (HTTP error: {sc})\n"
         return error_msg, None, None
     
     if not isinstance(summaries_response, dict):
+        print(f"❌ Invalid response type - Backend response: {json.dumps(summaries_response, indent=2, default=str)}")
         error_msg = "=== ACTIVE SPRINT STATUS ===\nNo active sprint summaries found\n"
         return error_msg, None, None
     
     summaries = summaries_response.get("data", {}).get("summaries", [])
     if not summaries:
+        print(f"❌ Empty summaries - Backend response: {json.dumps(summaries_response, indent=2, default=str)}")
         error_msg = "=== ACTIVE SPRINT STATUS ===\nNo active sprint summaries found\n"
         return error_msg, None, None
     
-    # Find sprint with HIGHEST issues_at_start
+    # Find sprint with HIGHEST total issues (sum of total_issues_to_do + total_issues_in_progress + total_issues_done)
     sprint_with_max_issues = None
-    max_issues_at_start = -1
+    max_total_issues = -1
+    
+    def safe_int(value):
+        """Safely convert value to int, handling different types."""
+        if isinstance(value, str):
+            try:
+                return int(value)
+            except (ValueError, TypeError):
+                return 0
+        elif isinstance(value, (int, float)):
+            return int(value)
+        else:
+            return 0
     
     for summary in summaries:
-        issues_at_start = summary.get("issues_at_start", 0)
-        # Handle different types (int, float, string)
-        if isinstance(issues_at_start, str):
-            try:
-                issues_at_start = int(issues_at_start)
-            except (ValueError, TypeError):
-                issues_at_start = 0
-        elif not isinstance(issues_at_start, (int, float)):
-            issues_at_start = 0
+        # Calculate total issues: sum of to_do + in_progress + done
+        total_issues_to_do = safe_int(summary.get("total_issues_to_do", 0))
+        total_issues_in_progress = safe_int(summary.get("total_issues_in_progress", 0))
+        total_issues_done = safe_int(summary.get("total_issues_done", 0))
         
-        if issues_at_start > max_issues_at_start:
-            max_issues_at_start = issues_at_start
+        total_issues = total_issues_to_do + total_issues_in_progress + total_issues_done
+        
+        if total_issues > max_total_issues:
+            max_total_issues = total_issues
             sprint_with_max_issues = summary
     
     if not sprint_with_max_issues:
-        error_msg = "=== ACTIVE SPRINT STATUS ===\nNo valid sprint found (no issues_at_start data)\n"
+        print(f"❌ No valid sprint selected - Backend response: {json.dumps(summaries_response, indent=2, default=str)}")
+        print(f"   Available summaries: {len(summaries)}")
+        error_msg = "=== ACTIVE SPRINT STATUS ===\nNo valid sprint found (no total issues data)\n"
         return error_msg, None, None
     
     # Format the selected sprint data

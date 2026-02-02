@@ -34,6 +34,7 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     
     # Check if we got a valid sprint
     if not sprint_id:
+        log(int(job_id) if job_id is not None else None, f"❌ Failed to get active sprint ID for team '{team_name}'")
         return False, "Failed to get active sprint ID"
     
     log(int(job_id) if job_id is not None else None, f"✅ Sprint ID found: {sprint_id}")
