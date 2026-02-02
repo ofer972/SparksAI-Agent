@@ -841,8 +841,8 @@ def process_llm_response_and_save_ai_card(
     else:
         normalized_team_name = team_name
     
-    # Determine priority from CriticalityDetermination or default to "Warning"
-    priority = criticality_determination if criticality_determination else "Warning"
+    # Determine priority from CriticalityDetermination or default to None
+    priority = criticality_determination if criticality_determination else None
     
     card_payload = {
         "team_name": normalized_team_name,
