@@ -13,7 +13,8 @@ from utils_processing import (
     save_recommendations_from_json,
     get_team_sprint_burndown_for_analysis,
     get_daily_transcript_for_analysis,
-    get_active_sprint_summary_by_team_for_analysis,
+    get_selected_active_sprint_summary,
+    format_active_sprint_summary_for_analysis,
     process_llm_response_and_save_ai_card,
     process_llm_with_two_step_fallback,
 )
@@ -28,9 +29,22 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     if not team_name:
         return False, "Missing team_name in job payload"
 
-    # Get formatted data using helper functions
-    # Get active sprint summary first (includes sprint goal and sprint status)
-    sprint_summary_formatted, _sprint_id, _sprint_goal = get_active_sprint_summary_by_team_for_analysis(client, team_name)
+    # Sprint gate: stop early if no active sprint_id (or total_issues <= 0)
+    selected, total_issues, _error_msg = get_selected_active_sprint_summary(
+        client=client,
+        name=team_name,
+        is_group=False,
+    )
+    sprint_id = selected.get("sprint_id") if isinstance(selected, dict) else None
+    try:
+        sprint_id_int = int(sprint_id) if sprint_id is not None else None
+    except Exception:
+        sprint_id_int = None
+
+    if not sprint_id_int or (total_issues is not None and total_issues <= 0):
+        return True, "No active sprint found. Insight was not created. Job stopped."
+
+    sprint_summary_formatted = format_active_sprint_summary_for_analysis(selected)
     transcript_formatted = get_daily_transcript_for_analysis(client, team_name)
     burndown_formatted = get_team_sprint_burndown_for_analysis(client, team_name)
 
@@ -97,6 +111,7 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
         },
         card_type="Team",
         extract_content_fn=extract_review_section,
+        sprint_id=sprint_id_int,
     )
     
     # Extract recommendations_json from LLM response for recommendations saving

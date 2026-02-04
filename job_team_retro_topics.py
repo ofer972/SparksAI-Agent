@@ -9,6 +9,7 @@ from utils_processing import (
     extract_recommendations,
     extract_text_and_json,
     extract_review_section,
+    get_selected_active_sprint_summary,
     get_team_sprint_burndown_for_analysis,
     get_current_sprint_progress_for_analysis,
     get_transcripts_for_analysis,
@@ -27,6 +28,20 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     team_name = job.get("team_name")
     if not team_name:
         return False, "Missing team_name in job payload"
+
+    # Sprint gate: stop early if no active sprint_id (or total_issues <= 0)
+    selected, total_issues, _error_msg = get_selected_active_sprint_summary(
+        client=client,
+        name=team_name,
+        is_group=False,
+    )
+    sprint_id_raw = selected.get("sprint_id") if isinstance(selected, dict) else None
+    try:
+        sprint_id = int(sprint_id_raw) if sprint_id_raw is not None else None
+    except Exception:
+        sprint_id = None
+    if not sprint_id or (total_issues is not None and total_issues <= 0):
+        return True, "No active sprint found. Insight was not created. Job stopped."
 
     # Get formatted data using helper functions
     # Get latest 5 transcripts
@@ -118,6 +133,7 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
         job_type=job_type,
         card_type="Team",
         extract_content_fn=extract_review_section,
+        sprint_id=sprint_id,
     )
     
     # Extract recommendations_json from LLM response for recommendations saving

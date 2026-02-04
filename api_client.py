@@ -321,32 +321,6 @@ class APIClient:
         )
         return resp.status_code, self._safe_json(resp)
 
-    def get_sprint_predictability(
-        self,
-        team_name: str | None = None,
-        months: int = 3,
-    ) -> Tuple[int, Any]:
-        """Get sprint predictability data.
-        
-        Args:
-            team_name: Optional team name to filter by
-            months: Number of months to look back (default: 3, valid: 1, 2, 3, 4, 6, 9)
-            
-        Returns:
-            Tuple of (status_code, response_data)
-        """
-        params: Dict[str, Any] = {"months": months}
-        if team_name:
-            params["team_name"] = team_name
-        
-        resp = requests.get(
-            self._url("/api/v1/sprints/sprint-predictability"),
-            params=params,
-            headers=self._headers(),
-            timeout=self.timeout_seconds,
-        )
-        return resp.status_code, self._safe_json(resp)
-
     def get_closed_sprints(
         self,
         team_name: str | None = None,
@@ -390,18 +364,29 @@ class APIClient:
         )
         return resp.status_code, self._safe_json(resp)
 
-    def get_active_sprint_summary_by_team(self, team_name: str) -> Tuple[int, Any]:
+    def get_active_sprint_summary_by_team(
+        self,
+        team_name: str,
+        is_group: bool = False,
+        issue_type: str | None = None,
+    ) -> Tuple[int, Any]:
         """Get active sprint summary by team from active_sprint_summary_by_team view.
         
         Args:
             team_name: Team name to get active sprint summary for
+            is_group: If true, team_name is treated as a group name
+            issue_type: Optional issue type filter (e.g., 'Story', 'Bug', 'Task')
             
         Returns:
             Tuple of (status_code, response_data)
         """
         resp = requests.get(
             self._url("/api/v1/sprints/active-sprint-summary-by-team"),
-            params={"team_name": team_name},
+            params={
+                "team_name": team_name,
+                **({"isGroup": "true"} if is_group else {}),
+                **({"issue_type": issue_type} if issue_type else {}),
+            },
             headers=self._headers(),
             timeout=self.timeout_seconds,
         )

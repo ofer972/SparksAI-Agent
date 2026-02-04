@@ -787,6 +787,7 @@ def process_llm_response_and_save_ai_card(
     card_type: str,  # "PI" or "Team" - for determining endpoint
     extract_content_fn: Callable[[str], str | None] = extract_pi_sync_review,
     group_name: str | None = None,  # Optional group_name for Group cards
+    sprint_id: int | None = None,  # Optional sprint_id for Sprint-scoped cards
 ) -> Tuple[str, str, str, int]:
     """
     Process LLM response, extract structured content, and save AI cards.
@@ -860,6 +861,10 @@ def process_llm_response_and_save_ai_card(
     # Add group_name if provided (for Group cards - backend accepts group_name in Team AI cards endpoint)
     if group_name:
         card_payload["group_name"] = group_name
+
+    # Add sprint_id if provided (for Sprint-scoped cards)
+    if sprint_id is not None:
+        card_payload["sprint_id"] = sprint_id
     
     # Add PI if present in config (for PI cards)
     if "pi" in card_config:

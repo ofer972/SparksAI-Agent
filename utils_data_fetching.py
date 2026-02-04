@@ -614,95 +614,161 @@ def get_active_sprint_summary_by_team_for_analysis(
                     or None if error/no sprint found.
         - sprint_goal: The sprint_goal from the selected sprint, or None if error/no sprint found.
     """
-    sc, summaries_response = client.get_active_sprint_summary_by_team(team_name)
-    
-    if sc != 200:
-        print(f"❌ HTTP Error {sc} - Backend response: {json.dumps(summaries_response, indent=2, default=str)}")
-        error_msg = f"=== ACTIVE SPRINT STATUS ===\nNo active sprint summaries found (HTTP error: {sc})\n"
-        return error_msg, None, None
-    
-    if not isinstance(summaries_response, dict):
-        print(f"❌ Invalid response type - Backend response: {json.dumps(summaries_response, indent=2, default=str)}")
-        error_msg = "=== ACTIVE SPRINT STATUS ===\nNo active sprint summaries found\n"
-        return error_msg, None, None
-    
-    summaries = summaries_response.get("data", {}).get("summaries", [])
-    if not summaries:
-        print(f"❌ Empty summaries - Backend response: {json.dumps(summaries_response, indent=2, default=str)}")
-        error_msg = "=== ACTIVE SPRINT STATUS ===\nNo active sprint summaries found\n"
-        return error_msg, None, None
-    
-    # Find sprint with HIGHEST total issues (sum of total_issues_to_do + total_issues_in_progress + total_issues_done)
-    sprint_with_max_issues = None
-    max_total_issues = -1
-    
-    def safe_int(value):
-        """Safely convert value to int, handling different types."""
-        if isinstance(value, str):
-            try:
-                return int(value)
-            except (ValueError, TypeError):
-                return 0
-        elif isinstance(value, (int, float)):
+    selected, _total_issues, error_msg = get_selected_active_sprint_summary(
+        client=client,
+        name=team_name,
+        is_group=False,
+    )
+    if error_msg or not selected:
+        return error_msg or "=== ACTIVE SPRINT STATUS ===\nNo active sprint summaries found\n", None, None
+
+    formatted_string = format_active_sprint_summary_for_analysis(selected)
+    sprint_id = selected.get("sprint_id")
+    sprint_goal = selected.get("sprint_goal", "")
+
+    return formatted_string, sprint_id, sprint_goal
+
+
+def _safe_int(value: Any) -> int:
+    """Safely convert value to int, handling strings and nulls."""
+    if isinstance(value, str):
+        try:
             return int(value)
-        else:
+        except (ValueError, TypeError):
             return 0
-    
-    for summary in summaries:
-        # Calculate total issues: sum of to_do + in_progress + done
-        total_issues_to_do = safe_int(summary.get("total_issues_to_do", 0))
-        total_issues_in_progress = safe_int(summary.get("total_issues_in_progress", 0))
-        total_issues_done = safe_int(summary.get("total_issues_done", 0))
-        
-        total_issues = total_issues_to_do + total_issues_in_progress + total_issues_done
-        
+    if isinstance(value, (int, float)):
+        return int(value)
+    return 0
+
+
+def _calc_total_issues_from_summary(summary: Dict[str, Any]) -> int:
+    """Calculate total issues = to_do + in_progress + done from a sprint summary row."""
+    total_issues_to_do = _safe_int(summary.get("total_issues_to_do", 0))
+    total_issues_in_progress = _safe_int(summary.get("total_issues_in_progress", 0))
+    total_issues_done = _safe_int(summary.get("total_issues_done", 0))
+    return total_issues_to_do + total_issues_in_progress + total_issues_done
+
+
+def select_sprint_with_max_total_issues(
+    summaries: list[Dict[str, Any]],
+) -> tuple[Dict[str, Any] | None, int]:
+    """Select the sprint summary row with the maximum total issues."""
+    selected: Dict[str, Any] | None = None
+    max_total_issues = -1
+
+    for summary in summaries or []:
+        if not isinstance(summary, dict):
+            continue
+        total_issues = _calc_total_issues_from_summary(summary)
         if total_issues > max_total_issues:
             max_total_issues = total_issues
-            sprint_with_max_issues = summary
-    
-    if not sprint_with_max_issues:
-        print(f"❌ No valid sprint selected - Backend response: {json.dumps(summaries_response, indent=2, default=str)}")
-        print(f"   Available summaries: {len(summaries)}")
+            selected = summary
+
+    return selected, max_total_issues
+
+
+def get_selected_active_sprint_summary(
+    client: APIClient,
+    name: str,
+    is_group: bool = False,
+) -> tuple[Dict[str, Any] | None, int | None, str | None]:
+    """
+    Fetch active sprint summaries and select the one with max total issues.
+
+    Returns:
+        (selected_summary, selected_total_issues, error_msg)
+    """
+    sc, summaries_response = client.get_active_sprint_summary_by_team(
+        team_name=name,
+        is_group=is_group,
+    )
+
+    if sc != 200:
+        error_msg = f"=== ACTIVE SPRINT STATUS ===\nNo active sprint summaries found (HTTP error: {sc})\n"
+        return None, None, error_msg
+
+    if not isinstance(summaries_response, dict):
+        error_msg = "=== ACTIVE SPRINT STATUS ===\nNo active sprint summaries found\n"
+        return None, None, error_msg
+
+    summaries = summaries_response.get("data", {}).get("summaries", [])
+    if not summaries or not isinstance(summaries, list):
+        error_msg = "=== ACTIVE SPRINT STATUS ===\nNo active sprint summaries found\n"
+        return None, None, error_msg
+
+    selected, max_total_issues = select_sprint_with_max_total_issues(summaries)
+    if not selected:
         error_msg = "=== ACTIVE SPRINT STATUS ===\nNo valid sprint found (no total issues data)\n"
-        return error_msg, None, None
-    
-    # Format the selected sprint data
-    parts = ["=== ACTIVE SPRINT STATUS ==="]
-    parts.append("-" * 30)
-    
-    # Format sprint_goal specially
-    sprint_goal_text = sprint_with_max_issues.get("sprint_goal", "")
+        return None, None, error_msg
+
+    return selected, max_total_issues, None
+
+
+def format_active_sprint_summary_for_analysis(selected_summary: Dict[str, Any]) -> str:
+    """Format a selected sprint summary row for LLM analysis."""
+    parts = ["=== ACTIVE SPRINT STATUS ===", "-" * 30]
+
+    sprint_goal_text = selected_summary.get("sprint_goal", "")
     if sprint_goal_text:
         parts.append("**Sprint Goal:**")
         parts.append(str(sprint_goal_text))
         parts.append("")
-    
+
     # Filter out points columns and sprint_goal, format remaining as key: value
     from datetime import datetime, timezone
-    for key, value in sprint_with_max_issues.items():
-        if 'point' not in key.lower() and key != 'sprint_goal':
-            # Format the value
-            if value is None:
-                formatted_value = ""
-            elif hasattr(value, 'isoformat'):  # datetime object
-                formatted_value = value.isoformat()
-            elif hasattr(value, 'strftime'):  # date object
-                formatted_value = value.strftime('%Y-%m-%d %H:%M:%S')
-            else:
-                formatted_value = str(value)
-            parts.append(f"{key}: {formatted_value}")
-    
+
+    for key, value in selected_summary.items():
+        if "point" in str(key).lower() or key == "sprint_goal":
+            continue
+        if value is None:
+            formatted_value = ""
+        elif hasattr(value, "isoformat"):
+            formatted_value = value.isoformat()
+        elif hasattr(value, "strftime"):
+            formatted_value = value.strftime("%Y-%m-%d %H:%M:%S")
+        else:
+            formatted_value = str(value)
+        parts.append(f"{key}: {formatted_value}")
+
     parts.append("")
     parts.append(f"Current Date: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')}")
     parts.append("")
-    
-    formatted_string = "\n".join(parts)
-    
-    # Extract sprint_id and sprint_goal from the selected sprint
-    sprint_id = sprint_with_max_issues.get("sprint_id")
-    sprint_goal = sprint_with_max_issues.get("sprint_goal", "")
-    
-    return formatted_string, sprint_id, sprint_goal
+
+    return "\n".join(parts)
+
+
+def sprint_gate_get_sprint_id_or_stop(
+    client: APIClient,
+    name: str,
+    is_group: bool = False,
+) -> tuple[int | None, str | None]:
+    """
+    Determine whether to continue a sprint-scoped job.
+
+    Rules:
+    - If no sprint_id (null/missing), stop.
+    - If total issues is available/computable and <= 0, stop.
+    - On stop, return (None, stop_message). The caller should return success=True with that message.
+    """
+    selected, total_issues, error_msg = get_selected_active_sprint_summary(
+        client=client,
+        name=name,
+        is_group=is_group,
+    )
+
+    if error_msg or not selected:
+        return None, "No active sprint found. Insight was not created. Job stopped."
+
+    sprint_id_raw = selected.get("sprint_id")
+    sprint_id = _safe_int(sprint_id_raw)
+    if sprint_id <= 0:
+        return None, "No active sprint found. Insight was not created. Job stopped."
+
+    # total_issues is computed from summary; if it exists and is <= 0, stop
+    if total_issues is not None and total_issues <= 0:
+        return None, "No active sprint found. Insight was not created. Job stopped."
+
+    return sprint_id, None
 
 
 def get_sprint_issues_with_epic_for_analysis(

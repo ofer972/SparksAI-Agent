@@ -10,6 +10,7 @@ from utils_processing import (
     extract_text_and_json,
     extract_review_section,
     get_group_sprint_burndown_for_analysis,
+    get_selected_active_sprint_summary,
     process_llm_response_and_save_ai_card,
     process_llm_with_two_step_fallback,
     save_recommendations_from_json,
@@ -32,6 +33,20 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
     group_name = job.get("group_name")
     if not group_name:
         return False, "Missing group_name in job payload"
+
+    # Sprint gate for group: continue if at least one team has an active sprint
+    selected, total_issues, _error_msg = get_selected_active_sprint_summary(
+        client=client,
+        name=group_name,
+        is_group=True,
+    )
+    sprint_id_raw = selected.get("sprint_id") if isinstance(selected, dict) else None
+    try:
+        sprint_id = int(sprint_id_raw) if sprint_id_raw is not None else None
+    except Exception:
+        sprint_id = None
+    if not sprint_id or (total_issues is not None and total_issues <= 0):
+        return True, "No active sprint found. Insight was not created. Job stopped."
 
     # TODO: Fetch group-level sprint flow data when backend endpoint is ready
     # For now, leave data sections empty as requested
@@ -99,6 +114,7 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
         card_type="Team",  # Use Team AI cards endpoint (which accepts group_name)
         extract_content_fn=extract_review_section,
         group_name=group_name,  # Pass group_name to be included in card payload
+        sprint_id=sprint_id,
     )
     
     # Extract recommendations_json from LLM response for recommendations saving
