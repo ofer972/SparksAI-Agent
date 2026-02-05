@@ -75,6 +75,26 @@ def extract_tokens_from_llm_response(raw_response: Dict[str, Any]) -> int | None
     return None
 
 
+def calculate_severity(status_code: int) -> str:
+    """
+    Calculate severity based on HTTP status code.
+    
+    Returns:
+        "HIGH" for status_code >= 500
+        "WARNING" for status_code > 200 and < 500
+        "OK" for status_code == 200
+        "NONE" otherwise
+    """
+    if status_code >= 500:
+        return "HIGH"
+    elif status_code > 200 and status_code < 500:
+        return "WARNING"
+    elif status_code == 200:
+        return "OK"
+    else:
+        return "NONE"
+
+
 def call_audit_service(
     action: str,
     duration_seconds: float,
@@ -107,6 +127,9 @@ def call_audit_service(
         # Format action_date as ISO string
         action_date_iso = action_date.isoformat()
         
+        # Calculate severity from status code
+        severity = calculate_severity(status_code)
+        
         # Build audit log payload
         audit_log: Dict[str, Any] = {
             "user_id": None,
@@ -118,6 +141,7 @@ def call_audit_service(
             "http_method": "POST",
             "status_code": status_code,
             "response_time_seconds": duration_seconds,
+            "severity": severity,
         }
         
         # Add tokens_used if available
