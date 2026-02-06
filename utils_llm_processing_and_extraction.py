@@ -845,10 +845,14 @@ def process_llm_response_and_save_ai_card(
     # Determine priority from CriticalityDetermination or default to None
     priority = criticality_determination if criticality_determination else None
     
+    # Validate that job_type (insight_id) is provided
+    if not job_type or not job_type.strip():
+        raise ValueError(f"job_type (insight_id) is required but was empty or None. Received: {job_type}")
+    
     card_payload = {
         "team_name": normalized_team_name,
         "card_name": card_config.get("card_name"),
-        "insight_type": job_type,  # Use job_type parameter - matches insight_types.insight_type
+        "insight_id": job_type.strip(),  # Use job_type parameter - now contains insight_id (e.g., "pi-sync")
         "description": description[:2000],  # Truncate description if too long
         "date": today,
         "priority": priority,
@@ -878,11 +882,12 @@ def process_llm_response_and_save_ai_card(
     upsert_done = False
     card_id = None
     
-    # Build filter parameters for list query - filter by date, insight_type, and identifiers
-    # Aligns with unique index: (date, insight_type, team_name, pi, group_name)
+    # Build filter parameters for list query - filter by date, insight_id, and identifiers
+    # Aligns with unique index: (date, insight_id, team_name, pi, group_name)
+    # Note: API parameter name is still "insight_type" but expects insight_id value
     list_params = {
         "date": today,
-        "insight_type": card_payload.get("insight_type")
+        "insight_type": card_payload.get("insight_id")  # API parameter name is still insight_type for backward compatibility
     }
     
     # Add identifier filters based on what's in the payload
@@ -901,11 +906,11 @@ def process_llm_response_and_save_ai_card(
         if isinstance(items, list):
             for c in items:
                 try:
-                    # Match based on unique index fields: date, insight_type, and identifiers
+                    # Match based on unique index fields: date, insight_id, and identifiers
                     same_date = str(c.get("date", ""))[:10] == today
-                    same_insight_type = c.get("insight_type") == card_payload.get("insight_type")
+                    same_insight_id = c.get("insight_id") == card_payload.get("insight_id")
                     
-                    if not same_date or not same_insight_type:
+                    if not same_date or not same_insight_id:
                         continue
                     
                     # Match based on identifiers - all must match
@@ -963,7 +968,7 @@ def process_llm_response_and_save_ai_card(
     
     # Short log of the created card insight
     desc_preview = (card_payload["description"] or "")[:120]
-    log(job_id, f"🗂️ Card insight: name='{card_payload['card_name']}' type='{card_payload.get('insight_type', 'N/A')}' priority='{card_payload['priority']}' preview='{desc_preview}'")
+    log(job_id, f"🗂️ Card insight: name='{card_payload['card_name']}' id='{card_payload.get('insight_id', 'N/A')}' priority='{card_payload['priority']}' preview='{desc_preview}'")
     
     if card_id is not None:
         log(job_id, f"✅ Card ID extracted: {card_id}")

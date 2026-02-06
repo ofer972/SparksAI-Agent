@@ -3,18 +3,18 @@ import os
 # Base backend URL (no auth for now)
 BASE_URL: str = os.getenv("BACKEND_API_URL", "http://localhost:8000")
 
-# Job processing configuration (mirror existing logic)
+# Job processing configuration - uses insight_id values
 JOB_TYPES = [
-    "Daily Progress",
-    "Sprint Goal",
-    "PI Sync",
-    "Team PI Insight",
-    "Team Retro Topics",
-    "PI Dependencies",
-    "PI Planning Gaps",
-    "Group Sprint Flow",
-    "Group Sprint Predictability",
-    "Group Sprint Dependency",
+    "daily-progress",
+    "sprint-goal",
+    "pi-sync",
+    "team-pi-insight",
+    "team-retro-topics",
+    "pi-dependencies",
+    "pi-planning-gaps",
+    "group-sprint-flow",
+    "group-sprint-predictability",
+    "group-sprint-dependency",
 ]
 
 # Polling intervals (defaults match current project behavior)
