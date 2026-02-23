@@ -17,6 +17,8 @@ from utils_llm_processing_and_extraction import JSONExtractionError
 def route_and_process(job: Dict[str, Any]) -> Tuple[bool, str]:
     try:
         job_type = str(job.get("job_type", ""))
+        if job_type.strip() == "Test":
+            return True, ""
         if job_type == "daily-progress":
             return job_daily_progress.process(job)
         if job_type == "sprint-goal":

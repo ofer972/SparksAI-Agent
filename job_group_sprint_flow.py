@@ -9,6 +9,7 @@ from utils_processing import (
     extract_recommendations,
     extract_text_and_json,
     extract_review_section,
+    get_all_active_sprint_summaries_formatted_for_group,
     get_group_sprint_burndown_for_analysis,
     get_selected_active_sprint_summary,
     process_llm_response_and_save_ai_card,
@@ -54,10 +55,14 @@ def process(job: Dict[str, Any]) -> Tuple[bool, str]:
 
     # Get formatted burndown data for all teams in the group
     burndown_formatted = get_group_sprint_burndown_for_analysis(client, group_name)
+    # Format and send each team's active sprint (max total issues per team)
+    sprint_summary_formatted = get_all_active_sprint_summaries_formatted_for_group(client, group_name)
     
     # Build data string (without prompt)
     parts = ["=== GROUP SPRINT FLOW ==="]
     parts.append(f"Group: {group_name}")
+    parts.append("")
+    parts.append(sprint_summary_formatted)
     parts.append("")
     
     # Add formatted burndown data
