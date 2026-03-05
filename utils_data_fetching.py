@@ -704,9 +704,16 @@ def get_selected_active_sprint_summary(
     return selected, max_total_issues, None
 
 
-def format_active_sprint_summary_for_analysis(selected_summary: Dict[str, Any]) -> str:
-    """Format a selected sprint summary row for LLM analysis."""
-    parts = ["=== ACTIVE SPRINT STATUS ===", "-" * 30]
+def format_active_sprint_summary_for_analysis(
+    selected_summary: Dict[str, Any],
+    team_name: str | None = None,
+) -> str:
+    """Format a selected sprint summary row for LLM analysis.
+    If team_name is provided, it is shown right after the header (e.g. for group flow)."""
+    parts = ["=== ACTIVE SPRINT STATUS ==="]
+    if team_name:
+        parts.append(f"Team: {team_name}")
+    parts.append("-" * 30)
 
     sprint_goal_text = selected_summary.get("sprint_goal", "")
     if sprint_goal_text:
@@ -735,6 +742,49 @@ def format_active_sprint_summary_for_analysis(selected_summary: Dict[str, Any]) 
     parts.append("")
 
     return "\n".join(parts)
+
+
+def get_all_active_sprint_summaries_formatted_for_group(
+    client: APIClient,
+    group_name: str,
+) -> str:
+    """
+    Fetch all active sprint summaries for a group, select the sprint with max total
+    issues per team, and return one formatted block per team for LLM analysis.
+
+    Used only by Group Sprint Flow so the LLM sees every team's active sprint status.
+    """
+    sc, summaries_response = client.get_active_sprint_summary_by_team(
+        team_name=group_name,
+        is_group=True,
+    )
+    if sc != 200 or not isinstance(summaries_response, dict):
+        return "=== ACTIVE SPRINT STATUS ===\nNo active sprint summaries found for group.\n"
+    summaries = summaries_response.get("data", {}).get("summaries", [])
+    if not summaries or not isinstance(summaries, list):
+        return "=== ACTIVE SPRINT STATUS ===\nNo active sprint summaries found for group.\n"
+
+    # Group by team_name (each summary has team_name from the backend)
+    by_team: Dict[str, list] = {}
+    for s in summaries:
+        if not isinstance(s, dict):
+            continue
+        tn = s.get("team_name") or "Unknown"
+        by_team.setdefault(tn, []).append(s)
+
+    # Per team: select the summary with max total issues, then format (team name after header)
+    blocks = []
+    for team_name in sorted(by_team.keys()):
+        team_summaries = by_team[team_name]
+        selected, _ = select_sprint_with_max_total_issues(team_summaries)
+        if selected:
+            formatted = format_active_sprint_summary_for_analysis(selected, team_name=team_name)
+            if blocks:
+                blocks.append(f"--- Team: {team_name} ---")
+            blocks.append(formatted)
+    if not blocks:
+        return "=== ACTIVE SPRINT STATUS ===\nNo valid sprint data for any team in group.\n"
+    return "\n\n".join(blocks)
 
 
 def sprint_gate_get_sprint_id_or_stop(

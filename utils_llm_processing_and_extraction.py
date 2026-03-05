@@ -583,6 +583,10 @@ def process_llm_with_two_step_fallback(
         input_sent_parts.append("=== FIRST CALL ===")
         input_sent_parts.append(formatted_first)
         
+        # Update job with input_sent before first LLM call (so it's saved even on timeout/error)
+        if job_id is not None:
+            client.patch_agent_job(job_id, {"input_sent": "\n".join(input_sent_parts)})
+        
         # Call first LLM
         log(job_id, f"📤 Calling LLM (First Call) for {job_type} (input: {len(formatted_first)} chars)")
         ok_first, llm_answer_first, _raw_first = call_agent_llm_process(
@@ -663,6 +667,10 @@ def process_llm_with_two_step_fallback(
         input_sent_parts.append("")
         input_sent_parts.append("=== SECOND CALL ===")
         input_sent_parts.append(formatted_second)
+        
+        # Update job with input_sent before second LLM call (so it's saved even on timeout/error)
+        if job_id is not None:
+            client.patch_agent_job(job_id, {"input_sent": "\n".join(input_sent_parts)})
         
         # Call second LLM
         log(job_id, f"📤 Calling LLM (Second Call) for {job_type} (input: {len(formatted_second)} chars)")

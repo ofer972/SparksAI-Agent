@@ -5,6 +5,7 @@ BASE_URL: str = os.getenv("BACKEND_API_URL", "http://localhost:8000")
 
 # Job processing configuration - uses insight_id values
 JOB_TYPES = [
+    "Test",
     "daily-progress",
     "sprint-goal",
     "pi-sync",
@@ -35,7 +36,7 @@ NETWORK_BACKOFF_CAP_SECONDS: int = _int_env("NETWORK_BACKOFF_CAP", 300)
 
 # API timeout configuration
 API_TIMEOUT_SECONDS: int = _int_env("API_TIMEOUT", 60)
-LLM_TIMEOUT_SECONDS: int = _int_env("LLM_TIMEOUT", 120)
+LLM_TIMEOUT_SECONDS: int = _int_env("LLM_TIMEOUT", 180)  # 3 minutes for agent LLM calls
 
 # Audit service configuration
 AUDIT_SERVICE_URL: str = os.getenv("AUDIT_SERVICE_URL", "")
